@@ -1,0 +1,5 @@
+services:
+  backend:
+    image: ai-agent-demo:latest
+    ports:
+      - "8080:8080"

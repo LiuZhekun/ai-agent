@@ -1,0 +1,5 @@
+services:
+  milvus:
+    image: milvusdb/milvus:v2.4.13
+    ports:
+      - "19530:19530"

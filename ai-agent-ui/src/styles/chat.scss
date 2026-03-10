@@ -1,0 +1,38 @@
+.app-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  height: 100vh;
+}
+
+.session-list {
+  border-right: 1px solid #eee;
+  padding: 12px;
+}
+
+.chat-window {
+  padding: 12px;
+}
+
+.messages {
+  min-height: 400px;
+}
+
+.bubble {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.bubble.user {
+  background: #e6f7ff;
+}
+
+.bubble.assistant,
+.bubble.system {
+  background: #f7f7f7;
+}
+
+.chart {
+  width: 100%;
+  height: 300px;
+}

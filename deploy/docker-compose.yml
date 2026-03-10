@@ -1,0 +1,30 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+    ports:
+      - "${MYSQL_PORT}:3306"
+    volumes:
+      - ./init-db:/docker-entrypoint-initdb.d
+
+  redis:
+    image: redis:7
+    ports:
+      - "${REDIS_PORT}:6379"
+
+  milvus:
+    image: milvusdb/milvus:v2.4.13
+    ports:
+      - "${MILVUS_PORT}:19530"
+
+  nginx:
+    image: nginx:1.27
+    ports:
+      - "${NGINX_PORT}:80"
+
+  backend:
+    image: ai-agent-demo:latest
+    ports:
+      - "${BACKEND_PORT}:8080"

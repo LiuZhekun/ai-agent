@@ -1,0 +1,8 @@
+io.github.aiagent.starter.autoconfigure.AgentAutoConfiguration
+io.github.aiagent.starter.autoconfigure.AgentLlmAutoConfiguration
+io.github.aiagent.starter.autoconfigure.AgentMemoryAutoConfiguration
+io.github.aiagent.starter.autoconfigure.AgentKnowledgeAutoConfiguration
+io.github.aiagent.starter.autoconfigure.AgentVectorAutoConfiguration
+io.github.aiagent.starter.autoconfigure.AgentTranslatorAutoConfiguration
+io.github.aiagent.starter.autoconfigure.AgentMetricsAutoConfiguration
+io.github.aiagent.starter.autoconfigure.AgentWebAutoConfiguration

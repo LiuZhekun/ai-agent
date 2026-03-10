@@ -1,0 +1,40 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ai-agent-demo
+  ai:
+    vectorstore:
+      milvus:
+        client:
+          host: ${MILVUS_HOST:127.0.0.1}
+          port: ${MILVUS_PORT:19530}
+        database-name: ${MILVUS_DATABASE:default}
+        collection-name: ${MILVUS_COLLECTION:ai_agent_knowledge}
+        embedding-dimension: ${MILVUS_EMBEDDING_DIMENSION:1024}
+        index-type: ${MILVUS_INDEX_TYPE:IVF_FLAT}
+        metric-type: ${MILVUS_METRIC_TYPE:COSINE}
+        initialize-schema: true
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/ai_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+ai:
+  agent:
+    llm:
+      provider: openai-compatible
+    tool:
+      timeout-seconds: 10
+    safety:
+      write-need-confirm: true
