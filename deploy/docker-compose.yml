@@ -1,30 +1,138 @@
+# ==========================================================================
+# AI Agent 容器编排
+# ==========================================================================
+# 默认启动：mysql + redis + milvus（本地开发所需的中间件）
+# 完整部署：docker compose --profile full up -d（追加 nginx + backend）
+#
+# 所有可配置项通过 .env 文件注入，参见 .env.example。
+# ==========================================================================
+
 services:
+
+  # ------------------------------------------------------------------------
+  # MySQL 8.0 - 业务数据存储
+  # ------------------------------------------------------------------------
   mysql:
     image: mysql:8.0
+    container_name: ai-agent-mysql
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ai_agent}
+      TZ: Asia/Shanghai
     ports:
-      - "${MYSQL_PORT}:3306"
+      - "${MYSQL_PORT:-3306}:3306"
     volumes:
+      - mysql_data:/var/lib/mysql
       - ./init-db:/docker-entrypoint-initdb.d
+      - ./mysql/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci
 
+  # ------------------------------------------------------------------------
+  # Redis 7 - 会话管理与短期记忆
+  # ------------------------------------------------------------------------
   redis:
     image: redis:7
+    container_name: ai-agent-redis
+    restart: unless-stopped
     ports:
-      - "${REDIS_PORT}:6379"
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
 
+  # ------------------------------------------------------------------------
+  # Milvus 2.4 - 向量检索（RAG）
+  # ------------------------------------------------------------------------
+  # 使用 standalone 模式 + 嵌入式 etcd + 本地存储，无需额外容器。
   milvus:
     image: milvusdb/milvus:v2.4.13
+    container_name: ai-agent-milvus
+    restart: unless-stopped
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      ETCD_CONFIG_PATH: /milvus/configs/embedEtcd.yaml
+      COMMON_STORAGETYPE: local
     ports:
-      - "${MILVUS_PORT}:19530"
+      - "${MILVUS_PORT:-19530}:19530"
+      - "${MILVUS_METRICS_PORT:-9091}:9091"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9091/healthz || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    security_opt:
+      - seccomp:unconfined
 
+  # ------------------------------------------------------------------------
+  # Nginx（仅完整部署时启动：--profile full）
+  # ------------------------------------------------------------------------
   nginx:
     image: nginx:1.27
+    container_name: ai-agent-nginx
+    restart: unless-stopped
     ports:
-      - "${NGINX_PORT}:80"
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      backend:
+        condition: service_started
+    profiles:
+      - full
 
+  # ------------------------------------------------------------------------
+  # Backend 后端服务（仅完整部署时启动：--profile full）
+  # 需要先构建镜像：cd deploy/backend && ./build-and-deploy.sh
+  # ------------------------------------------------------------------------
   backend:
     image: ai-agent-demo:latest
+    container_name: ai-agent-backend
+    restart: unless-stopped
     ports:
-      - "${BACKEND_PORT}:8080"
+      - "${BACKEND_PORT:-8080}:8080"
+    environment:
+      MYSQL_URL: jdbc:mysql://ai-agent-mysql:3306/${MYSQL_DATABASE:-ai_agent}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+      MYSQL_USERNAME: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      REDIS_HOST: ai-agent-redis
+      REDIS_PORT: 6379
+      MILVUS_HOST: ai-agent-milvus
+      MILVUS_PORT: 19530
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+    profiles:
+      - full
+
+# --------------------------------------------------------------------------
+# 命名数据卷（容器删除后数据仍保留，除非执行 docker compose down -v）
+# --------------------------------------------------------------------------
+volumes:
+  mysql_data:
+    name: ai-agent-mysql-data
+  redis_data:
+    name: ai-agent-redis-data
+  milvus_data:
+    name: ai-agent-milvus-data

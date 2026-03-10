@@ -44,4 +44,18 @@ public class MemoryAdvisor {
         chatMessage.setTimestamp(Instant.now());
         memoryManager.save(request.getSessionId(), chatMessage);
     }
+
+    /**
+     * 保存助手回复到对话记忆，保证多轮上下文完整。
+     */
+    public void saveAssistant(String sessionId, String content) {
+        if (content == null || content.isBlank()) {
+            return;
+        }
+        ChatMessage chatMessage = new ChatMessage();
+        chatMessage.setRole(ChatMessage.Role.ASSISTANT);
+        chatMessage.setContent(content);
+        chatMessage.setTimestamp(Instant.now());
+        memoryManager.save(sessionId, chatMessage);
+    }
 }

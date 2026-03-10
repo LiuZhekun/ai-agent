@@ -3,16 +3,12 @@ package io.github.aiagent.core.metrics;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
-import org.springframework.stereotype.Component;
-
 import java.util.concurrent.TimeUnit;
 
 /**
  * Agent 指标采集器。
- * <p>
- * 指标方法多数由装饰器/拦截器在运行时调用，不一定在核心业务代码里出现直接引用。
+ * 由 AgentMetricsAutoConfiguration 条件注册，仅当 MeterRegistry 可用时生效。
  */
-@Component
 public class AgentMetrics {
 
     private final MeterRegistry meterRegistry;

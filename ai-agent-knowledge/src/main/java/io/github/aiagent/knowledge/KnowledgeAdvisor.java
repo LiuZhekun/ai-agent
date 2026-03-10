@@ -1,13 +1,18 @@
 package io.github.aiagent.knowledge;
 
+import io.github.aiagent.core.agent.AgentAdvisor;
+import io.github.aiagent.core.agent.AgentRequest;
 import io.github.aiagent.core.agent.AgentSession;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
- * 知识注入 Advisor。
+ * 知识注入 Advisor，实现 AgentAdvisor 接口，
+ * 在每轮对话前将 L0-L3 知识拼接到 session metadata 供系统 Prompt 使用。
  */
 @Component
-public class KnowledgeAdvisor {
+@Order(10)
+public class KnowledgeAdvisor implements AgentAdvisor {
 
     private final KnowledgeManager knowledgeManager;
 
@@ -15,17 +20,9 @@ public class KnowledgeAdvisor {
         this.knowledgeManager = knowledgeManager;
     }
 
-    /**
-     * 注入知识提示到 session metadata，供系统 Prompt 拼装。
-     */
-    public void before(AgentSession session) {
-        before(session, "");
-    }
-
-    /**
-     * 根据用户 query 注入知识提示（含 L3 RAG 引用上下文）。
-     */
-    public void before(AgentSession session, String query) {
+    @Override
+    public void before(AgentSession session, AgentRequest request) {
+        String query = request.getMessage() != null ? request.getMessage() : "";
         session.getMetadata().put("knowledgeSnippets", knowledgeManager.getKnowledgePrompt(query));
     }
 }

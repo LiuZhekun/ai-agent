@@ -15,6 +15,9 @@
 可用工具列表：
 {available_tools}
 
+对话历史：
+{conversation_history}
+
 安全规则：
 {safety_rules}
 
