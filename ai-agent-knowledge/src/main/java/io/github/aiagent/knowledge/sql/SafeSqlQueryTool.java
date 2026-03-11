@@ -66,6 +66,9 @@ public class SafeSqlQueryTool {
      */
     @Tool(description = "执行安全 SQL 查询")
     public List<Map<String, Object>> executeSql(String sql) {
+        if (!properties.isEnabled()) {
+            throw new IllegalStateException("L2 安全 SQL 工具已禁用 (ai.agent.knowledge.sql.enabled=false)");
+        }
         // 1) 静态规则校验（禁用语句、表白名单等）
         SqlValidator.ValidationResult check = validator.validate(sql);
         if (!check.isAllowed()) {

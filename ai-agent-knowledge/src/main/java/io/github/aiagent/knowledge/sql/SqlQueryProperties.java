@@ -24,6 +24,8 @@ import java.util.List;
 @Component
 @ConfigurationProperties(prefix = "ai.agent.knowledge.sql")
 public class SqlQueryProperties {
+    /** L2 安全 SQL 工具总开关，设为 false 时 SafeSqlQueryTool 拒绝执行任何查询 */
+    private boolean enabled = true;
     private List<String> allowedTables = new ArrayList<>();
     private List<String> deniedTables = new ArrayList<>();
     private List<String> deniedFunctions = new ArrayList<>(List.of("sleep", "load_file"));
@@ -35,6 +37,8 @@ public class SqlQueryProperties {
     private List<String> maskColumns = new ArrayList<>();
     private boolean tenantFilterEnabled = false;
 
+    public boolean isEnabled() { return enabled; }
+    public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public List<String> getAllowedTables() { return allowedTables; }
     public void setAllowedTables(List<String> allowedTables) { this.allowedTables = allowedTables; }
     public List<String> getDeniedTables() { return deniedTables; }

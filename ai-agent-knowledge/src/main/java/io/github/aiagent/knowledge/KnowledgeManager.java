@@ -9,6 +9,9 @@ import io.github.aiagent.knowledge.rag.RagFullIndexer;
 import io.github.aiagent.knowledge.rag.RagProperties;
 import io.github.aiagent.knowledge.rag.RagReranker;
 import io.github.aiagent.knowledge.rag.RagRetriever;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -16,26 +19,31 @@ import java.util.List;
 /**
  * 知识管理器 —— 按分层策略（L0-L3）汇总并组装可注入 Prompt 的知识上下文。
  * <p>
- * <b>知识分层体系：</b>
+ * 每一层都有独立的 {@code enabled} 开关，业务项目可按需精确控制：
  * <ul>
- *   <li><b>L0 静态片段</b> — 通过 {@link KnowledgeSnippetLoader} 从 classpath 加载的
- *       通用背景知识（Markdown / 文本文件），内容在应用启动后不变</li>
- *   <li><b>L1 数据库 Schema</b> — 通过 {@link io.github.aiagent.knowledge.schema.SchemaDiscoveryService}
- *       自动发现的表结构元数据，经 {@link io.github.aiagent.knowledge.schema.SchemaPromptGenerator}
- *       转换为自然语言描述</li>
- *   <li><b>L2 业务工具</b> — 由 SQL 工具等运行时能力隐式提供（不经过此类组装）</li>
- *   <li><b>L3 RAG 动态检索</b> — 根据用户当前查询，通过 {@link RagRetriever} 检索、
- *       {@link RagReranker} 重排、{@link RagContextAssembler} 组装后注入带来源引用的上下文</li>
+ *   <li><b>L0 静态片段</b>（{@code ai.agent.knowledge.snippet.enabled}）—
+ *       通过 {@link KnowledgeSnippetLoader} 从 classpath 加载的业务知识文件</li>
+ *   <li><b>L1 数据库 Schema</b>（{@code ai.agent.knowledge.schema.enabled}）—
+ *       通过 {@link SchemaDiscoveryService} 自动读取的表结构元数据</li>
+ *   <li><b>L2 安全 SQL</b>（{@code ai.agent.knowledge.sql.enabled}）—
+ *       由 {@link io.github.aiagent.knowledge.sql.SafeSqlQueryTool} 提供的运行时查询能力</li>
+ *   <li><b>L3 RAG</b>（{@code ai.agent.knowledge.rag.enabled}）—
+ *       根据用户查询动态检索的向量化知识</li>
  * </ul>
- * <p>
- * 组装结果通过 {@link #getKnowledgePrompt(String)} 返回，由 {@link KnowledgeAdvisor}
- * 写入 session metadata，最终拼接进系统 Prompt。
  *
  * @see KnowledgeLevel
  * @see KnowledgeAdvisor
  */
 @Component
 public class KnowledgeManager {
+
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeManager.class);
+
+    @Value("${ai.agent.knowledge.snippet.enabled:true}")
+    private boolean snippetEnabled;
+
+    @Value("${ai.agent.knowledge.schema.enabled:true}")
+    private boolean schemaEnabled;
 
     private final KnowledgeSnippetLoader snippetLoader;
     private final SchemaDiscoveryService schemaDiscoveryService;
@@ -84,12 +92,32 @@ public class KnowledgeManager {
      * @return 组装后的知识 Prompt 文本
      */
     public String getKnowledgePrompt(String query) {
-        String snippets = snippetLoader.load().stream()
-                .map(s -> "# " + s.getTitle() + "\n" + s.getContent())
-                .reduce("", (a, b) -> a + "\n" + b);
-        String schema = schemaPromptGenerator.generate(schemaDiscoveryService.getCachedOrLoad());
+        StringBuilder sb = new StringBuilder();
+
+        if (snippetEnabled) {
+            String snippets = snippetLoader.load().stream()
+                    .map(s -> "# " + s.getTitle() + "\n" + s.getContent())
+                    .reduce("", (a, b) -> a + "\n" + b);
+            sb.append(snippets);
+        } else {
+            log.debug("L0 知识片段已禁用 (ai.agent.knowledge.snippet.enabled=false)");
+        }
+
+        if (schemaEnabled) {
+            String schema = schemaPromptGenerator.generate(schemaDiscoveryService.getCachedOrLoad());
+            if (!sb.isEmpty()) sb.append("\n\n");
+            sb.append(schema);
+        } else {
+            log.debug("L1 Schema 发现已禁用 (ai.agent.knowledge.schema.enabled=false)");
+        }
+
         String ragContext = buildRagContext(query);
-        return snippets + "\n\n" + schema + (ragContext.isBlank() ? "" : "\n\n" + ragContext);
+        if (!ragContext.isBlank()) {
+            if (!sb.isEmpty()) sb.append("\n\n");
+            sb.append(ragContext);
+        }
+
+        return sb.toString();
     }
 
     private String buildRagContext(String query) {

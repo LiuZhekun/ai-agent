@@ -101,13 +101,67 @@ ai:
       vector-top-k: ${AI_AGENT_MEMORY_VECTOR_TOP_K:5}                # 向量记忆召回条数
       vector-threshold: ${AI_AGENT_MEMORY_VECTOR_THRESHOLD:0.7}      # 向量记忆相似度阈值（0~1）
 
-    # ------ 6.4 安全策略 ------
+    # ------ 6.4 知识分层（L0/L1/L2/L3）------
+    # Agent 通过多层知识体系增强回答能力：
+    #   L0 知识片段 —— 将业务描述文件注入 Prompt（无需额外中间件）
+    #   L1 Schema 感知 —— 自动读取数据库表结构和字段注释（需 MySQL）
+    #   L2 安全 SQL —— Agent 自主构造 SELECT 查询（需 MySQL，多层安全防护）
+    #   L3 全量 RAG —— 语义向量检索（需 Milvus）
+    knowledge:
+      # --- L0: 知识片段 ---
+      snippet:
+        enabled: ${AI_AGENT_KNOWLEDGE_SNIPPET_ENABLED:true}                       # 是否启用 L0 静态知识片段
+        path: ${AI_AGENT_KNOWLEDGE_SNIPPET_PATH:classpath*:agent-knowledge/*.*}   # 知识文件路径，支持 .md/.txt
+
+      # --- L1: Schema 自动发现 ---
+      schema:
+        enabled: ${AI_AGENT_KNOWLEDGE_SCHEMA_ENABLED:true}                        # 是否启用 L1 Schema 发现（需 MySQL）
+
+      # --- L2: 安全 SQL 查询 ---
+      sql:
+        enabled: ${AI_AGENT_KNOWLEDGE_SQL_ENABLED:true}                           # 是否启用 L2 安全 SQL 工具（需 MySQL）
+        allowed-tables: []                          # 表白名单（空=允许全部，设置后仅允许白名单中的表）
+        denied-tables:                              # 表黑名单（优先于白名单）
+          - sys_password
+        denied-functions:                           # 禁止调用的 SQL 函数（防滥用）
+          - sleep
+          - load_file
+        max-rows: ${AI_AGENT_SQL_MAX_ROWS:500}      # 单次查询最大返回行数
+        max-scan-rows: ${AI_AGENT_SQL_MAX_SCAN_ROWS:100000}  # EXPLAIN 预估扫描行数上限
+        explain-check: true                         # 执行前 EXPLAIN 检查（拒绝全表扫描）
+        rate-limit: ${AI_AGENT_SQL_RATE_LIMIT:10}   # 每会话每分钟最大 SQL 执行次数
+        timeout-seconds: ${AI_AGENT_SQL_TIMEOUT:5}  # SQL 查询超时（秒）
+        mask-columns:                               # 查询结果脱敏字段列表
+          - phone
+          - id_card
+          - email
+        tenant-filter-enabled: false                # 是否自动注入租户过滤条件
+
+      # --- L3: RAG 检索增强生成 ---
+      rag:
+        enabled: ${AI_AGENT_RAG_ENABLED:true}                    # 是否启用 RAG（需 Milvus）
+        chunk-size: ${AI_AGENT_RAG_CHUNK_SIZE:400}               # 文档切分窗口大小（字符数）
+        chunk-overlap: ${AI_AGENT_RAG_CHUNK_OVERLAP:80}          # 切分窗口重叠量
+        top-k: ${AI_AGENT_RAG_TOP_K:8}                           # 初次检索返回候选数
+        rerank-top-k: ${AI_AGENT_RAG_RERANK_TOP_K:5}             # 重排后保留片段数
+        min-score: ${AI_AGENT_RAG_MIN_SCORE:0.05}                # 检索最低得分阈值
+        max-context-chars: ${AI_AGENT_RAG_MAX_CONTEXT_CHARS:2200} # 注入 Prompt 的上下文最大字符数
+
+    # ------ 6.5 向量同步 ------
+    # 控制 MySQL → Milvus 的数据向量化同步行为。
+    vector:
+      sync:
+        enabled: ${AI_AGENT_VECTOR_SYNC_ENABLED:true}            # 是否启用定时向量同步
+        cron-expression: ${AI_AGENT_VECTOR_SYNC_CRON:0 */5 * * * *}  # 增量同步 cron（默认每 5 分钟）
+        batch-size: ${AI_AGENT_VECTOR_SYNC_BATCH_SIZE:200}       # 每批次写入向量库的文档数
+
+    # ------ 6.6 安全策略 ------
     # 控制写操作（新增/修改/删除）是否需要用户确认。
     # 设为 true 时，所有写操作会先展示给用户确认后才执行（推荐）。
     safety:
       write-need-confirm: ${AI_AGENT_WRITE_NEED_CONFIRM:true}
 
-    # ------ 6.5 澄清对话 ------
+    # ------ 6.7 澄清对话 ------
     # 当用户意图不明确或参数不完整时，Agent 会主动追问。
     dialogue:
       clarification-enabled: ${AI_AGENT_CLARIFICATION_ENABLED:true}           # 是否开启澄清对话
@@ -115,7 +169,14 @@ ai:
       clarification-ask-batch-size: ${AI_AGENT_CLARIFICATION_ASK_BATCH_SIZE:2}  # 每轮最多追问问题数
       clarification-timeout-minutes: ${AI_AGENT_CLARIFICATION_TIMEOUT_MINUTES:10}  # 澄清超时（分钟），超时后放弃澄清
 
-    # ------ 6.6 SSE 推送配置 ------
+    # ClarificationPolicy 精细控制（与上方 dialogue 配合使用）
+    clarification:
+      max-rounds: ${AI_AGENT_CLARIFICATION_MAX_ROUNDS:3}
+      ask-batch-size: ${AI_AGENT_CLARIFICATION_ASK_BATCH_SIZE:2}
+      timeout-minutes: ${AI_AGENT_CLARIFICATION_TIMEOUT_MINUTES:10}
+      on-max-rounds-exceeded: ${AI_AGENT_CLARIFICATION_ON_EXCEEDED:abort}     # abort / fallback
+
+    # ------ 6.8 SSE 推送配置 ------
     # 前端通过 SSE（Server-Sent Events）实时接收 Agent 响应。
     sse:
       heartbeat-interval-seconds: ${AI_AGENT_SSE_HEARTBEAT_INTERVAL_SECONDS:15}  # 心跳间隔（秒），防止连接被中间件超时断开
