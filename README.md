@@ -18,7 +18,7 @@
   - [09-集成指南](docs/09-集成指南.md)
   - [10-API文档](docs/10-API文档.md)
   - [11-可观测与测试指南](docs/11-可观测与测试指南.md)
-  - [12-问题答疑-L0L1L2L3与LLM执行顺序](docs/12-问题答疑FAQ)
+  - [12-问题答疑] (docs/12-问题答疑FAQ)
 - 部署文档：[deploy/README.md](deploy/README.md)
 - 模块文档：各子模块 README（示例：[ai-agent-knowledge/README.md](ai-agent-knowledge/README.md)）
 
