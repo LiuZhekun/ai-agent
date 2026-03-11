@@ -2,6 +2,25 @@
 
 一个可扩展的多模块 AI Agent 工程，支持会话编排、工具调用、知识增强（L0/L1/L2/L3 RAG）、向量化、字段翻译、SSE 前端交互与一键部署。
 
+## 文档入口
+
+- 项目文档目录：
+  - [00-项目概述](docs/00-项目概述.md)
+  - [01-架构设计](docs/01-架构设计.md)
+  - [02-开发环境搭建](docs/02-开发环境搭建.md)
+  - [03-中间件部署手册](docs/03-中间件部署手册.md)
+  - [04-快速开始](docs/04-快速开始.md)
+  - [05-工具开发指南](docs/05-工具开发指南.md)
+  - [06-向量化接入指南](docs/06-向量化接入指南.md)
+  - [07-字段翻译指南](docs/07-字段翻译指南.md)
+  - [07-sse-e2e联调清单](docs/07-sse-e2e联调清单.md)
+  - [08-前端开发指南](docs/08-前端开发指南.md)
+  - [09-集成指南](docs/09-集成指南.md)
+  - [10-API文档](docs/10-API文档.md)
+  - [11-可观测与测试指南](docs/11-可观测与测试指南.md)
+- 部署文档：[deploy/README.md](deploy/README.md)
+- 模块文档：各子模块 README（示例：[ai-agent-knowledge/README.md](ai-agent-knowledge/README.md)）
+
 ## 模块结构
 
 ```mermaid
@@ -26,6 +45,8 @@ flowchart LR
   demo --> ui
   deploy --> demo
 ```
+
+
 
 ## 核心能力
 
@@ -67,12 +88,6 @@ cd ai-agent-ui
 npm install
 npm run dev
 ```
-
-## 文档入口
-
-- 项目文档：`docs/00-项目概述.md` 到 `docs/11-可观测与测试指南.md`
-- 部署文档：`deploy/README.md`
-- 模块文档：各子模块 `README.md`
 
 ## 许可证
 
