@@ -1,7 +1,13 @@
 package io.github.aiagent.core.formatter;
 
 /**
- * 输出格式类型。
+ * Agent 响应的输出格式类型枚举。
+ * <p>
+ * 由 {@link ResponseFormatter#format(Object, FormatType, String)} 根据此类型
+ * 选择对应的格式化器进行数据转换。前端可根据事件类型（FINAL_ANSWER / CHART_PAYLOAD）
+ * 和格式类型决定如何渲染响应内容。
+ *
+ * @see ResponseFormatter 使用本枚举驱动格式化分发
  */
 public enum FormatType {
     /** 纯文本。 */

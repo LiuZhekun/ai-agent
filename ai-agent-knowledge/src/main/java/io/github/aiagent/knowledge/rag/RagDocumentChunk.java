@@ -4,7 +4,14 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * RAG 文档切分后的最小检索单元。
+ * RAG 文档 chunk —— 经 {@link RagDocumentChunker} 切分后的最小检索单元。
+ * <p>
+ * 每个 chunk 携带唯一 ID、来源信息和检索得分，
+ * 在 {@link RagRetriever} 中作为索引条目存储，在 {@link RagContextAssembler} 中
+ * 被组装为 Prompt 上下文。
+ *
+ * @see RagDocumentChunker
+ * @see RagRetriever
  */
 public class RagDocumentChunk implements Serializable {
     @Serial

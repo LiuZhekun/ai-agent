@@ -7,7 +7,19 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 任务步骤模型。
+ * 任务计划中的单个执行步骤，是 {@link TaskPlan} 的组成元素。
+ * <p>
+ * 每个步骤描述了一次工具调用，包含：
+ * <ul>
+ *   <li>{@code stepId} —— 步骤唯一标识（计划内唯一）</li>
+ *   <li>{@code toolName} —— 需要调用的工具名称</li>
+ *   <li>{@code parameters} —— 工具调用参数</li>
+ *   <li>{@code dependencies} —— 依赖的前置步骤 ID 列表，所有依赖完成后本步骤才可执行</li>
+ *   <li>{@code status} —— 当前执行状态，参见 {@link StepStatus}</li>
+ * </ul>
+ *
+ * @see TaskPlan 所属的计划模型
+ * @see StepStatus 步骤状态枚举
  */
 public class TaskStep implements Serializable {
 

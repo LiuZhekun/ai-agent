@@ -10,7 +10,20 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 实体引用翻译器。
+ * 实体引用翻译器 —— 将实体名称翻译为对应的主键 ID。
+ * <p>
+ * 典型场景：用户说"部门为研发部"，本翻译器将 {@code "研发部"} 转换为
+ * {@code sys_department} 表中对应记录的 {@code id}。
+ * <p>
+ * <b>安全设计：表白名单机制</b><br>
+ * 为防止通过 {@code target} 参数访问任意数据库表，本翻译器维护了一个静态白名单
+ * {@code TABLE_WHITELIST}。只有白名单中的表才允许查询，请求非白名单表时会直接抛出异常。
+ * 需要支持新的实体表时，应在白名单中显式注册。
+ * <p>
+ * 字段名同样做合法标识符校验以防止 SQL 注入。
+ *
+ * @see FieldTranslator
+ * @see TranslationPolicy
  */
 @Component
 public class EntityRefTranslator implements FieldTranslator {

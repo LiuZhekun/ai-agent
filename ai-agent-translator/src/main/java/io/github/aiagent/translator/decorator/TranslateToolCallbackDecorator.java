@@ -18,10 +18,25 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 路径 A：工具调用前翻译拦截器。
+ * 路径 A：工具调用前的翻译拦截器（装饰器模式）。
  * <p>
- * 作用：在工具真正执行前，尝试把"自然语言字段"翻译成系统可执行值（如字典 code、实体 id）。
- * 翻译失败不会阻断工具执行，保证主流程鲁棒性。
+ * <b>核心机制</b>：实现 {@link ToolCallbackInterceptor}，在工具真正执行前的
+ * {@link #beforeCall} 阶段解析工具输入 JSON，尝试将"自然语言字段"翻译为
+ * 系统可执行值（如字典 code、实体 id）。翻译失败不会阻断工具执行，保证主流程鲁棒性。
+ * <p>
+ * 翻译触发有两种方式：
+ * <ol>
+ *   <li><b>显式规则</b> — 工具输入中包含 {@code _translate} 配置块，指定字段的翻译类型和目标。</li>
+ *   <li><b>启发式规则</b> — 根据字段命名约定自动识别（如以 {@code DictName} 结尾的字段、
+ *       {@code deptName} / {@code userName} 等已知实体引用字段）。</li>
+ * </ol>
+ * <p>
+ * 翻译结果会通过 {@link #applyTranslations} 回写到工具的实际入参 JSON 中，
+ * 使得工具执行时直接使用翻译后的值（如 deptName="技术部" → deptId=3）。
+ * 同时翻译快照保存在 {@code ThreadLocal} 和工具级快照中供调试和审计使用。
+ *
+ * @see ToolCallbackInterceptor
+ * @see TranslatorRegistry
  */
 @Component
 public class TranslateToolCallbackDecorator implements ToolCallbackInterceptor {
@@ -39,26 +54,49 @@ public class TranslateToolCallbackDecorator implements ToolCallbackInterceptor {
     }
 
     @Override
-    public void beforeCall(String toolName, String toolInput) {
+    public String beforeCall(String toolName, String toolInput) {
         Map<String, Object> translated = new LinkedHashMap<>();
         PRE_TRANSLATED.set(translated);
         if (toolInput == null || toolInput.isBlank()) {
-            return;
+            return toolInput;
         }
         try {
             JsonNode root = objectMapper.readTree(toolInput);
             if (!root.isObject()) {
-                return;
+                return toolInput;
             }
             processExplicitTranslateConfig(root, translated);
             processHeuristicFields(root, translated);
             if (!translated.isEmpty()) {
                 SNAPSHOT_BY_TOOL.put(toolName, Map.copyOf(translated));
                 log.info("Tool pre-translation finished, tool={}, translated={}", toolName, translated);
+                return applyTranslations(toolInput, translated);
             }
         } catch (Exception ex) {
-            // 兼容当前接口签名：翻译失败不阻断工具执行。
             log.warn("Tool pre-translation skipped, tool={}, reason={}", toolName, ex.getMessage());
+        }
+        return toolInput;
+    }
+
+    /**
+     * 将翻译结果回写到工具输入 JSON 中。
+     * <p>
+     * 对于每个翻译结果，在原始 JSON 中找到对应的源字段名，
+     * 将翻译后的值写入。例如 deptName="技术部" 翻译得到 deptId=3，
+     * 则在 JSON 中设置 deptName 的值为翻译结果（或新增翻译目标字段）。
+     */
+    @SuppressWarnings("unchecked")
+    private String applyTranslations(String toolInput, Map<String, Object> translated) {
+        try {
+            Map<String, Object> inputMap = objectMapper.readValue(toolInput, Map.class);
+            for (Map.Entry<String, Object> entry : translated.entrySet()) {
+                inputMap.put(entry.getKey(), entry.getValue());
+            }
+            inputMap.remove("_translate");
+            return objectMapper.writeValueAsString(inputMap);
+        } catch (Exception ex) {
+            log.warn("Failed to apply translations to tool input, using original input. reason={}", ex.getMessage());
+            return toolInput;
         }
     }
 

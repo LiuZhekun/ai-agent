@@ -9,8 +9,15 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * 工具元数据查询接口。
- * 给前端或调试端展示当前可用工具列表、参数信息与风险等级。
+ * 工具元数据查询接口 —— 供前端或调试端获取当前 Agent 可用的工具列表。
+ * <p>
+ * 返回内容包括工具名称、描述、参数 Schema 及风险等级等信息，
+ * 可用于前端展示"Agent 能力概览"或开发期间的接口调试。
+ * <p>
+ * 端点：{@code GET /api/agent/tools}
+ *
+ * @see AgentToolCallbackProvider
+ * @see ToolMetadata
  */
 @RestController
 @RequestMapping("/api/agent/tools")

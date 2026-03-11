@@ -7,7 +7,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 安全 SQL 配置。
+ * 安全 SQL 查询配置属性，对应配置前缀 {@code ai.agent.knowledge.sql}。
+ * <p>
+ * 控制 {@link SafeSqlQueryTool} 各安全组件的行为，包括：
+ * <ul>
+ *   <li>{@code allowedTables} / {@code deniedTables} —— 表级访问控制</li>
+ *   <li>{@code deniedFunctions} —— 禁止调用的 SQL 函数</li>
+ *   <li>{@code maxRows} —— 查询结果最大行数（强制 LIMIT）</li>
+ *   <li>{@code maxScanRows} / {@code explainCheck} —— EXPLAIN 扫描行数阈值</li>
+ *   <li>{@code rateLimit} —— 每分钟最大查询次数</li>
+ *   <li>{@code maskColumns} —— 需要脱敏的列名列表</li>
+ * </ul>
+ *
+ * @see SafeSqlQueryTool
  */
 @Component
 @ConfigurationProperties(prefix = "ai.agent.knowledge.sql")

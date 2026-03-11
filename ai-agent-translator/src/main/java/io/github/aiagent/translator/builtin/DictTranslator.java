@@ -9,7 +9,19 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * 字典翻译器。
+ * 字典翻译器 —— 查询 {@code sys_dict} 表将字典名称翻译为对应的字典编码。
+ * <p>
+ * 典型场景：用户说"状态为启用"，本翻译器将 {@code "启用"} 转换为字典 code（如 {@code 1}）。
+ * <p>
+ * 查询逻辑：{@code SELECT <resultField> FROM sys_dict WHERE type=<target> AND <lookupField>=<sourceValue>}
+ * <ul>
+ *   <li>{@code lookupField} 默认 {@code "name"}，{@code resultField} 默认 {@code "code"}</li>
+ *   <li>字段名会做合法标识符校验，防止 SQL 注入</li>
+ *   <li>多条匹配 / 未匹配时按 {@link TranslateContext} 中的策略处理</li>
+ * </ul>
+ *
+ * @see FieldTranslator
+ * @see TranslationPolicy
  */
 @Component
 public class DictTranslator implements FieldTranslator {

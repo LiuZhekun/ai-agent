@@ -6,7 +6,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Agent 统一配置属性（ai.agent.*）。
+ * AI Agent 统一配置属性，绑定前缀 {@code ai.agent.*}。
+ * <p>
+ * 本类通过嵌套静态类将配置项按功能域分组，每个子属性类对应 YAML 中的一个子节点：
+ * <ul>
+ *   <li>{@link LlmProperties} — LLM 提供商配置（{@code ai.agent.llm.*}）</li>
+ *   <li>{@link MemoryProperties} — 会话记忆策略（{@code ai.agent.memory.*}）</li>
+ *   <li>{@link KnowledgeProperties} — 知识库与安全 SQL（{@code ai.agent.knowledge.*}）</li>
+ *   <li>{@link ToolProperties} — 工具调用参数（{@code ai.agent.tool.*}）</li>
+ *   <li>{@link TranslatorProperties} — 字段翻译（{@code ai.agent.translator.*}）</li>
+ *   <li>{@link SafetyProperties} — 安全策略（{@code ai.agent.safety.*}）</li>
+ *   <li>{@link DialogueProperties} — 多轮对话与追问（{@code ai.agent.dialogue.*}）</li>
+ *   <li>{@link SseProperties} — SSE 推流参数（{@code ai.agent.sse.*}）</li>
+ * </ul>
+ * 所有属性均有合理默认值，可做到零配置启动。
  */
 @ConfigurationProperties(prefix = "ai.agent")
 public class AgentProperties {
@@ -20,14 +33,14 @@ public class AgentProperties {
     private DialogueProperties dialogue = new DialogueProperties();
     private SseProperties sse = new SseProperties();
 
-    // --- LLM ---
+    /** LLM 提供商配置。 */
     public static class LlmProperties {
         private String provider = "dashscope";
         public String getProvider() { return provider; }
         public void setProvider(String provider) { this.provider = provider; }
     }
 
-    // --- Memory ---
+    /** 会话记忆策略配置 —— 控制上下文裁剪、摘要触发及向量检索参数。 */
     public static class MemoryProperties {
         private String strategy = "token-window";
         private int messageWindow = 20;
@@ -50,7 +63,7 @@ public class AgentProperties {
         public void setVectorThreshold(double vectorThreshold) { this.vectorThreshold = vectorThreshold; }
     }
 
-    // --- Knowledge ---
+    /** 知识库配置 —— 包含 Schema 发现和安全 SQL 执行的子配置。 */
     public static class KnowledgeProperties {
         private boolean enabled = true;
         private SchemaProperties schema = new SchemaProperties();
@@ -91,7 +104,7 @@ public class AgentProperties {
         }
     }
 
-    // --- Tool ---
+    /** 工具调用配置 —— 超时、重试、并发及扫描包路径。 */
     public static class ToolProperties {
         private int timeoutSeconds = 10;
         private int maxRetries = 1;
@@ -108,7 +121,7 @@ public class AgentProperties {
         public void setScanPackages(List<String> scanPackages) { this.scanPackages = scanPackages; }
     }
 
-    // --- Translator ---
+    /** 字段翻译配置 —— 字典表名、列名及冲突策略。 */
     public static class TranslatorProperties {
         private boolean enabled = true;
         private String dictTable = "sys_dict";
@@ -131,7 +144,7 @@ public class AgentProperties {
         public void setNoMatchStrategy(String s) { this.noMatchStrategy = s; }
     }
 
-    // --- Safety ---
+    /** 安全策略配置 —— 思维链可见性与写操作确认开关。 */
     public static class SafetyProperties {
         private String thinkingVisibility = "summary";
         private boolean writeNeedConfirm = true;
@@ -142,7 +155,7 @@ public class AgentProperties {
         public void setWriteNeedConfirm(boolean writeNeedConfirm) { this.writeNeedConfirm = writeNeedConfirm; }
     }
 
-    // --- Dialogue ---
+    /** 多轮对话与追问配置 —— 追问轮次、批量数、超时及心跳间隔。 */
     public static class DialogueProperties {
         private boolean clarificationEnabled = true;
         private int clarificationMaxRounds = 3;
@@ -162,7 +175,7 @@ public class AgentProperties {
         public void setHeartbeatSeconds(int heartbeatSeconds) { this.heartbeatSeconds = heartbeatSeconds; }
     }
 
-    // --- SSE ---
+    /** SSE 推流配置 —— 心跳间隔与客户端重连延迟。 */
     public static class SseProperties {
         private int heartbeatIntervalSeconds = 15;
         private int reconnectDelayMs = 1000;

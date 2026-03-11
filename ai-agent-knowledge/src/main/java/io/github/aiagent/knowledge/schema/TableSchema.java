@@ -6,7 +6,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 表结构模型。
+ * 表结构模型 —— 描述一张数据库表的元数据信息。
+ * <p>
+ * 由 {@link SchemaDiscoveryService#discover()} 从 information_schema 填充，
+ * 包含表名、表注释、列定义等信息，随后由 {@link SchemaPromptGenerator} 转换为
+ * 可注入 Prompt 的自然语言描述。
+ * <p>
+ * <b>内部类 {@link ColumnSchema}</b> 描述单个列的名称、类型和注释。
+ *
+ * @see SchemaDiscoveryService
+ * @see SchemaPromptGenerator
  */
 public class TableSchema implements Serializable {
     @Serial
@@ -14,9 +23,14 @@ public class TableSchema implements Serializable {
     private String tableName;
     private String comment;
     private List<ColumnSchema> columns = new ArrayList<>();
+    // TODO 主键和外键信息尚未在 SchemaDiscoveryService.discover() 中填充，
+    //  当前为空列表，后续可从 information_schema.key_column_usage 获取。
     private List<String> primaryKeys = new ArrayList<>();
     private List<String> foreignKeys = new ArrayList<>();
 
+    /**
+     * 列结构模型 —— 描述表中单个列的元数据。
+     */
     public static class ColumnSchema implements Serializable {
         @Serial
         private static final long serialVersionUID = 1L;

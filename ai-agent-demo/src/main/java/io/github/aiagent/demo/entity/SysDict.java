@@ -3,7 +3,21 @@ package io.github.aiagent.demo.entity;
 import com.baomidou.mybatisplus.annotation.TableName;
 
 /**
- * 字典实体。
+ * 系统字典实体 —— 对应 sys_dict 表，存储各类编码映射（性别、状态、等级等）。
+ *
+ * <p>
+ * 字典表通过 {@code type} 分组，每组包含多条 {@code name → code} 映射。例如：
+ * </p>
+ * <pre>
+ * type=gender: 男→M, 女→F
+ * type=status: 启用→1, 禁用→0
+ * </pre>
+ * <p>
+ * 在 DTO 中使用 {@code @TranslateField(type="DICT", target="gender")} 即可让框架
+ * 自动完成"男"→"M"的翻译。
+ * </p>
+ *
+ * @see io.github.aiagent.demo.dto.UserDTO#gender UserDTO 中的字典翻译示例
  */
 @TableName("sys_dict")
 public class SysDict {

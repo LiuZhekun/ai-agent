@@ -14,7 +14,25 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * 知识管理器，汇总可注入 Prompt 的知识文本。
+ * 知识管理器 —— 按分层策略（L0-L3）汇总并组装可注入 Prompt 的知识上下文。
+ * <p>
+ * <b>知识分层体系：</b>
+ * <ul>
+ *   <li><b>L0 静态片段</b> — 通过 {@link KnowledgeSnippetLoader} 从 classpath 加载的
+ *       通用背景知识（Markdown / 文本文件），内容在应用启动后不变</li>
+ *   <li><b>L1 数据库 Schema</b> — 通过 {@link io.github.aiagent.knowledge.schema.SchemaDiscoveryService}
+ *       自动发现的表结构元数据，经 {@link io.github.aiagent.knowledge.schema.SchemaPromptGenerator}
+ *       转换为自然语言描述</li>
+ *   <li><b>L2 业务工具</b> — 由 SQL 工具等运行时能力隐式提供（不经过此类组装）</li>
+ *   <li><b>L3 RAG 动态检索</b> — 根据用户当前查询，通过 {@link RagRetriever} 检索、
+ *       {@link RagReranker} 重排、{@link RagContextAssembler} 组装后注入带来源引用的上下文</li>
+ * </ul>
+ * <p>
+ * 组装结果通过 {@link #getKnowledgePrompt(String)} 返回，由 {@link KnowledgeAdvisor}
+ * 写入 session metadata，最终拼接进系统 Prompt。
+ *
+ * @see KnowledgeLevel
+ * @see KnowledgeAdvisor
  */
 @Component
 public class KnowledgeManager {
@@ -47,12 +65,23 @@ public class KnowledgeManager {
         this.ragFullIndexer = ragFullIndexer;
     }
 
+    /**
+     * 无查询上下文时的知识组装入口，仅包含 L0 + L1 静态知识。
+     *
+     * @return 组装后的知识 Prompt 文本
+     */
     public String getKnowledgePrompt() {
         return getKnowledgePrompt("");
     }
 
     /**
-     * 根据查询动态组装知识 Prompt，L3 会注入带来源引用的 RAG context。
+     * 根据用户查询动态组装完整的知识 Prompt（L0 片段 + L1 Schema + L3 RAG 上下文）。
+     * <p>
+     * 当 RAG 首次检索为空时会自动触发一次全量索引重建后再次检索，
+     * 兼顾冷启动场景。
+     *
+     * @param query 用户当前的自然语言查询，用于 L3 RAG 检索；为空时跳过 RAG
+     * @return 组装后的知识 Prompt 文本
      */
     public String getKnowledgePrompt(String query) {
         String snippets = snippetLoader.load().stream()

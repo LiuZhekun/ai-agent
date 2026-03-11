@@ -5,7 +5,20 @@ import io.github.aiagent.translator.strategy.TranslationPolicy;
 import java.util.Map;
 
 /**
- * 翻译上下文。
+ * 翻译上下文 —— 承载单次翻译调用所需的全部参数。
+ * <p>
+ * 各字段含义：
+ * <ul>
+ *   <li>{@code sourceValue} — 待翻译的原始值（如用户输入的中文名称）</li>
+ *   <li>{@code target} — 翻译目标（字典类型编码 / 实体表名）</li>
+ *   <li>{@code lookupField} — 在目标数据源中用于匹配的列名，默认 {@code "name"}</li>
+ *   <li>{@code resultField} — 翻译结果所在的列名，默认 {@code "id"}</li>
+ *   <li>{@code multiResultPolicy} — 匹配到多条记录时的冲突策略</li>
+ *   <li>{@code notFoundPolicy} — 未匹配到记录时的处理策略</li>
+ *   <li>{@code metadata} — 可扩展的附加信息（保留给自定义翻译器使用）</li>
+ * </ul>
+ *
+ * @see FieldTranslator#translate(TranslateContext)
  */
 public class TranslateContext {
     private Object sourceValue;

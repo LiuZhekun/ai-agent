@@ -8,7 +8,22 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 工具元数据定义。
+ * 工具元数据 —— 描述一个 Agent 工具的静态信息。
+ *
+ * <p>由 {@link AgentToolCallbackProvider} 在扫描 {@link io.github.aiagent.core.tool.annotation.AgentTool @AgentTool}
+ * Bean 时构建，涵盖工具分组、名称、描述、参数列表和风险等级等信息。</p>
+ *
+ * <h3>使用场景</h3>
+ * <ul>
+ *   <li>{@link io.github.aiagent.core.agent.advisor.ClarificationAdvisor} —— 根据参数列表进行槽位完整性检查；</li>
+ *   <li>{@link io.github.aiagent.core.agent.advisor.PlanningAdvisor} —— 根据工具能力进行任务分解；</li>
+ *   <li>管理端点 —— 向运维展示已注册工具清单。</li>
+ * </ul>
+ *
+ * <p>注意：该类与 Spring AI 的 {@code org.springframework.ai.tool.metadata.ToolMetadata} 不同，
+ * 前者是框架内部的元数据模型，后者是 Spring AI 的 SPI 接口。命名空间通过包路径区分。</p>
+ *
+ * @see AgentToolCallbackProvider
  */
 public class ToolMetadata implements Serializable {
 
@@ -24,7 +39,8 @@ public class ToolMetadata implements Serializable {
     private Class<?> beanClass;
 
     /**
-     * 参数元信息。
+     * 单个工具参数的元信息，包含名称、类型、描述和是否必填。
+     * 供 {@link io.github.aiagent.core.agent.advisor.ClarificationAdvisor} 进行槽位检查。
      */
     public static class ParamInfo implements Serializable {
         @Serial

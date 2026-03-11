@@ -10,9 +10,34 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 工具回调装饰器，提供限流、超时、重试与统一格式化能力。
- * <p>
- * 调用链：beforeCall 拦截 -> 受控执行 delegate -> afterCall 拦截 -> 统一格式化 -> 指标记录。
+ * 工具回调装饰器 —— 以装饰器模式为原始 {@link ToolCallback} 叠加企业级治理能力。
+ *
+ * <h3>调用链路（每次 {@link #call} 触发）</h3>
+ * <pre>
+ *   并发闸门（Semaphore.tryAcquire）
+ *     → 拦截器链 beforeCall()
+ *       → 带超时的异步执行 delegate.call()（含重试）
+ *     → 拦截器链 afterCall()
+ *     → ToolResultFormatter 统一格式化
+ *     → AgentMetrics 指标记录
+ *   → 释放闸门（Semaphore.release，在 finally 中）
+ * </pre>
+ *
+ * <h3>各治理能力说明</h3>
+ * <ul>
+ *   <li><b>限流</b> —— 共享 {@link java.util.concurrent.Semaphore} 控制全局工具并发数，
+ *       避免单工具洪峰导致下游服务过载；</li>
+ *   <li><b>超时</b> —— 通过 {@link java.util.concurrent.CompletableFuture#get(long, java.util.concurrent.TimeUnit)}
+ *       限制单次调用最大耗时；</li>
+ *   <li><b>重试</b> —— 可配置最大重试次数 {@code maxRetries}，对瞬态错误进行透明重试；</li>
+ *   <li><b>拦截</b> —— 调用前后分别执行 {@link ToolCallbackInterceptor} 链，
+ *       支持日志、审计、参数改写等 SPI 扩展；</li>
+ *   <li><b>格式化</b> —— 通过 {@link ToolResultFormatter} 将结果转为 LLM 友好文本。</li>
+ * </ul>
+ *
+ * @see AgentToolCallbackProvider
+ * @see ToolCallbackInterceptor
+ * @see ToolResultFormatter
  */
 public class ToolCallbackDecorator implements ToolCallback {
 
@@ -46,6 +71,17 @@ public class ToolCallbackDecorator implements ToolCallback {
         return delegate.getToolDefinition();
     }
 
+    /**
+     * 执行带有完整治理链路的工具调用。
+     *
+     * <p>整个调用过程包括：并发限流 → 拦截器前置处理 → 异步超时执行（含重试）
+     * → 拦截器后置处理 → 结果格式化 → 指标采集。任何环节失败都会抛出
+     * {@link io.github.aiagent.core.exception.ToolExecutionException}。</p>
+     *
+     * @param toolInput JSON 格式的工具输入参数（由 LLM 生成）
+     * @return 格式化后的工具执行结果文本
+     * @throws io.github.aiagent.core.exception.ToolExecutionException 并发超限或重试耗尽时
+     */
     @Override
     public String call(String toolInput) {
         // 并发闸门：避免单工具被并发洪峰击穿。
@@ -57,7 +93,7 @@ public class ToolCallbackDecorator implements ToolCallback {
         try {
             String effectiveInput = toolInput;
             for (ToolCallbackInterceptor interceptor : interceptors) {
-                interceptor.beforeCall(getToolDefinition().name(), effectiveInput);
+                effectiveInput = interceptor.beforeCall(getToolDefinition().name(), effectiveInput);
             }
 
             String output = null;

@@ -6,7 +6,17 @@ import java.time.Instant;
 import java.util.Map;
 
 /**
- * 执行轨迹。
+ * 工具调用执行轨迹 —— 记录单次工具调用的完整生命周期。
+ *
+ * <p>由 {@link io.github.aiagent.core.agent.advisor.TraceAdvisor} 在工具调用前后
+ * 创建和完善，最终附加到 {@link AgentSession#getExecutionTraces()} 中，
+ * 供审计日志、性能分析和前端执行过程可视化使用。</p>
+ *
+ * <p>每条轨迹包含工具名称、所属分组、输入参数、输出结果、执行状态、耗时及异常信息，
+ * 足以完整还原一次工具调用的上下文。</p>
+ *
+ * @see io.github.aiagent.core.agent.advisor.TraceAdvisor
+ * @see AgentSession
  */
 public class ExecutionTrace implements Serializable {
 

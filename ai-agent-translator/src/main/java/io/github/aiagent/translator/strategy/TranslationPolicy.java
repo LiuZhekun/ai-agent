@@ -1,7 +1,12 @@
 package io.github.aiagent.translator.strategy;
 
 /**
- * 翻译冲突策略。
+ * 翻译冲突策略 —— 定义翻译过程中"多条匹配"和"未匹配"两种异常情况的处理方式。
+ * <p>
+ * 翻译器（如 {@link io.github.aiagent.translator.builtin.DictTranslator}）在查询数据源后，
+ * 根据 {@link MultiResultPolicy} 和 {@link NotFoundPolicy} 的取值决定是抛异常、返回首条结果
+ * 还是保留原值等。调用方可通过 {@link io.github.aiagent.translator.annotation.TranslateField}
+ * 注解或 {@link io.github.aiagent.translator.TranslateContext} 设置策略。
  */
 public class TranslationPolicy {
     public enum MultiResultPolicy {

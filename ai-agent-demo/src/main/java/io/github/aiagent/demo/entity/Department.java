@@ -3,7 +3,14 @@ package io.github.aiagent.demo.entity;
 import com.baomidou.mybatisplus.annotation.TableName;
 
 /**
- * 部门实体。
+ * 部门实体 —— 对应 sys_department 表。
+ *
+ * <p>
+ * 在本 Demo 中，部门表的 {@code name} 字段被 {@code @TranslateField(type="ENTITY_REF")}
+ * 引用，用于将用户输入的"技术部"自动翻译为部门 ID。
+ * </p>
+ *
+ * @see io.github.aiagent.demo.dto.UserDTO#deptId UserDTO 中的引用示例
  */
 @TableName("sys_department")
 public class Department {

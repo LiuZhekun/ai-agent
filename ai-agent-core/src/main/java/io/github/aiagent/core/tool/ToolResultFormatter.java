@@ -8,7 +8,21 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 工具结果格式化器，统一转换为 LLM 友好文本。
+ * 工具结果格式化器 —— 将工具输出统一转换为 LLM 可理解的文本。
+ *
+ * <h3>设计意图</h3>
+ * <p>不同工具的返回类型各异（Map、List、POJO、String 等），
+ * 直接传给 LLM 可能导致解析混乱或 token 浪费。本格式化器根据
+ * {@link FormatHint} 和运行时类型自动选择最佳表示形式：</p>
+ * <ul>
+ *   <li>{@code List<Map>} → Markdown 表格（适合结构化查询结果）；</li>
+ *   <li>{@code Map / List} → JSON 文本；</li>
+ *   <li>其他类型 → {@code String.valueOf} 纯文本。</li>
+ * </ul>
+ *
+ * <p>由 {@link ToolCallbackDecorator} 在拦截器链末尾统一调用。</p>
+ *
+ * @see ToolCallbackDecorator
  */
 @Component
 public class ToolResultFormatter {
@@ -30,6 +44,13 @@ public class ToolResultFormatter {
         JSON
     }
 
+    /**
+     * 根据格式提示和运行时类型，将工具输出转换为 LLM 友好的文本。
+     *
+     * @param result 工具执行的原始返回值
+     * @param hint   格式提示；{@code AUTO} 时自动推断
+     * @return 格式化后的文本
+     */
     public String format(Object result, FormatHint hint) {
         if (result == null) {
             return "null";
