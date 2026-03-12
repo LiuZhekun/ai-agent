@@ -1,6 +1,7 @@
 package io.github.aiagent.core.agent;
 
 import io.github.aiagent.core.agent.advisor.MemoryAdvisor;
+import io.github.aiagent.core.agent.advisor.PlanningAdvisor;
 import io.github.aiagent.core.agent.advisor.ThinkingSummaryAdvisor;
 import io.github.aiagent.core.exception.ClarificationRequiredException;
 import io.github.aiagent.core.exception.SessionBusyException;
@@ -62,6 +63,7 @@ public class AgentEngine {
     private final MemoryAdvisor memoryAdvisor;
     private final ThinkingSummaryAdvisor thinkingSummaryAdvisor;
     private final SystemPromptBuilder systemPromptBuilder;
+    private final PlanningAdvisor planningAdvisor;
 
     public AgentEngine(
             ChatClient.Builder chatClientBuilder,
@@ -78,6 +80,11 @@ public class AgentEngine {
         this.memoryAdvisor = memoryAdvisor;
         this.thinkingSummaryAdvisor = thinkingSummaryAdvisor;
         this.systemPromptBuilder = systemPromptBuilder;
+        this.planningAdvisor = advisors.stream()
+                .filter(PlanningAdvisor.class::isInstance)
+                .map(PlanningAdvisor.class::cast)
+                .findFirst()
+                .orElse(null);
     }
 
     /**
@@ -117,6 +124,12 @@ public class AgentEngine {
 
                 for (AgentAdvisor advisor : advisors) {
                     advisor.before(session, request);
+                }
+
+                if (planningAdvisor != null) {
+                    for (AgentEvent event : planningAdvisor.executeIfPresent(session).toIterable()) {
+                        sink.next(event);
+                    }
                 }
 
                 ChatClient chatClient = chatClientBuilder.build();

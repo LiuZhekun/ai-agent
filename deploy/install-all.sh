@@ -67,6 +67,15 @@ detect_os() {
   fi
 }
 
+detect_version_id() {
+  if [[ -f /etc/os-release ]]; then
+    . /etc/os-release
+    echo "${VERSION_ID:-0}"
+  else
+    echo "0"
+  fi
+}
+
 # ---------- Docker 安装 ----------
 ensure_docker() {
   if command -v docker >/dev/null 2>&1; then
@@ -98,10 +107,37 @@ ensure_docker() {
       ;;
     centos|rhel|rocky|almalinux|fedora)
       local pkg_cmd="yum"
+      local version_id major_ver repo_added repo_url
       command -v dnf >/dev/null 2>&1 && pkg_cmd="dnf"
-      run_privileged "${pkg_cmd}" install -y yum-utils
-      run_privileged "${pkg_cmd}" config-manager \
-        --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+      version_id="$(detect_version_id)"
+      major_ver="${version_id%%.*}"
+      [[ -z "${major_ver}" || ! "${major_ver}" =~ ^[0-9]+$ ]] && major_ver=0
+
+      run_privileged "${pkg_cmd}" install -y ca-certificates curl yum-utils
+      run_privileged update-ca-trust
+
+      repo_added="false"
+      for repo_url in \
+        "https://download.docker.com/linux/centos/docker-ce.repo" \
+        "https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo"
+      do
+        if run_privileged "${pkg_cmd}" config-manager --add-repo "${repo_url}"; then
+          log "Docker 仓库已添加：${repo_url}"
+          repo_added="true"
+          break
+        else
+          warn "添加仓库失败：${repo_url}"
+        fi
+      done
+
+      [[ "${repo_added}" == "true" ]] || die "无法添加 Docker 仓库，请检查网络或手动配置镜像源。"
+
+      # Docker 官方仓库当前尚未提供 centos/10 元数据，这里固定到 9 以提升兼容性。
+      if [[ "${major_ver}" -ge 10 ]] && [[ -f /etc/yum.repos.d/docker-ce.repo ]]; then
+        run_privileged sed -i 's/\$releasever/9/g' /etc/yum.repos.d/docker-ce.repo
+        warn "检测到系统大版本 ${major_ver}，已将 Docker repo releasever 固定为 9。"
+      fi
+
       run_privileged "${pkg_cmd}" install -y docker-ce docker-ce-cli containerd.io \
         docker-buildx-plugin docker-compose-plugin
       ;;

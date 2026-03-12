@@ -45,7 +45,9 @@ sequenceDiagram
     participant KM as KnowledgeManager
     participant SP as SystemPromptBuilder
     participant LLM as ChatClient/LLM
-    participant L2 as SafeSqlQueryTool
+    participant TCP as AgentToolCallbackProvider
+    participant TD as ToolCallbackDecorator
+    participant L2 as SafeSqlQueryTool(L2)
 
     U->>E: chat(sessionId, message)
     E->>M: before(session)
@@ -61,11 +63,15 @@ sequenceDiagram
 
     E->>SP: build(session)
     SP-->>E: system prompt
+    E->>TCP: getToolCallbacks()
+    TCP-->>E: toolCallbacks
     E->>LLM: prompt().call(toolCallbacks)
 
     opt LLM 需要实时业务数据
-        LLM->>L2: executeSql(sql)
-        L2-->>LLM: masked rows
+        LLM->>TD: invoke(safe-sql, args)
+        TD->>L2: executeSql(sql)
+        L2-->>TD: masked rows / error
+        TD-->>LLM: formatted tool result
     end
 
     LLM-->>E: final content
