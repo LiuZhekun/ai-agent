@@ -118,8 +118,8 @@ ensure_docker() {
 
       repo_added="false"
       for repo_url in \
-        "https://download.docker.com/linux/centos/docker-ce.repo" \
-        "https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo"
+        "https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo" \
+        "https://download.docker.com/linux/centos/docker-ce.repo"
       do
         if run_privileged "${pkg_cmd}" config-manager --add-repo "${repo_url}"; then
           log "Docker 仓库已添加：${repo_url}"
@@ -138,8 +138,21 @@ ensure_docker() {
         warn "检测到系统大版本 ${major_ver}，已将 Docker repo releasever 固定为 9。"
       fi
 
-      run_privileged "${pkg_cmd}" install -y docker-ce docker-ce-cli containerd.io \
-        docker-buildx-plugin docker-compose-plugin
+      if ! run_privileged "${pkg_cmd}" install -y docker-ce docker-ce-cli containerd.io \
+        docker-buildx-plugin docker-compose-plugin; then
+        warn "Docker 安装失败，尝试切换到阿里云镜像源后重试..."
+        if [[ -f /etc/yum.repos.d/docker-ce.repo ]]; then
+          run_privileged sed -i \
+            's#https://download.docker.com/linux/centos#https://mirrors.aliyun.com/docker-ce/linux/centos#g' \
+            /etc/yum.repos.d/docker-ce.repo
+        fi
+        run_privileged "${pkg_cmd}" clean all || true
+        run_privileged bash -c "rm -rf /var/cache/dnf /var/cache/yum"
+        run_privileged "${pkg_cmd}" makecache || true
+        run_privileged "${pkg_cmd}" install -y docker-ce docker-ce-cli containerd.io \
+          docker-buildx-plugin docker-compose-plugin \
+          || die "Docker 安装失败（官方源与镜像源均不可用），请检查网络或代理设置。"
+      fi
       ;;
     *)
       die "当前系统不在自动安装覆盖范围：${os_id}。请先手动安装 Docker。"
