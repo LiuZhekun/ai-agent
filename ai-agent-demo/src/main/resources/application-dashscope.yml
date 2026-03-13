@@ -23,7 +23,7 @@ spring:
       read-timeout: ${AI_AGENT_LLM_READ_TIMEOUT:60s}
   ai:
     openai:
-      api-key: ${DASHSCOPE_API_KEY:sk-43cab24c9fb146b69b359b34d27fbcca}              # 通过环境变量注入，切勿明文写入仓库
+      api-key: ${DASHSCOPE_API_KEY:}              # 通过环境变量注入，切勿明文写入仓库
       # Spring AI OpenAI 客户端会追加 /v1 路径段，因此这里使用不带 /v1 的兼容根地址。
       base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
       chat:
