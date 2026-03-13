@@ -1,20 +1,31 @@
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
 .app-layout {
   display: grid;
   grid-template-columns: 260px 1fr;
-  height: 100vh;
+  height: 100%;
+  overflow: hidden;
 }
 
 .session-list {
   border-right: 1px solid #eee;
   padding: 12px;
+  overflow-y: auto;
 }
 
 .chat-window {
   padding: 12px;
+  min-height: 0;
 }
 
 .messages {
-  min-height: 400px;
+  min-height: 100%;
 }
 
 .bubble {

@@ -3,7 +3,7 @@
 # AI Agent 一键部署脚本
 # ==========================================================================
 # 用法:
-#   ./install-all.sh              → 仅启动中间件（MySQL + Redis + Milvus）
+#   ./install-all.sh              → 仅启动中间件（MySQL + Redis + Milvus，自动带起 etcd + minio）
 #   ./install-all.sh --full       → 启动全部服务（含 Nginx + Backend）
 #   ./install-all.sh --init-db    → 强制重新初始化数据库（慎用）
 #   ./install-all.sh --help       → 显示帮助
@@ -25,7 +25,7 @@ for arg in "$@"; do
       echo "用法: ./install-all.sh [选项]"
       echo ""
       echo "选项:"
-      echo "  (无参数)     仅启动中间件（MySQL + Redis + Milvus），适合本地开发"
+      echo "  (无参数)     仅启动中间件（MySQL + Redis + Milvus，自动带起 etcd + minio），适合本地开发"
       echo "  --full       启动全部服务（含 Nginx + Backend），需要先构建后端镜像"
       echo "  --init-db    强制重新执行数据库初始化脚本（会清空并重建表和数据）"
       echo "  -h, --help   显示此帮助"
@@ -176,6 +176,10 @@ ensure_env() {
     cp .env.example .env
     log "未检测到 .env，已由 .env.example 自动生成。"
   fi
+
+  # 兼容 Windows CRLF：避免 `source .env` 时出现 `$'\r': command not found`
+  sed -i 's/\r$//' .env
+
   set -a
   # shellcheck disable=SC1091
   source .env
@@ -183,18 +187,47 @@ ensure_env() {
 }
 
 # ---------- 启动容器 ----------
+run_compose_up_with_retry() {
+  local retry_mirror="$1"
+  shift
+  local -a compose_cmd=("$@")
+
+  # 直接执行，保留 docker compose 原生交互输出样式
+  if "${compose_cmd[@]}"; then
+    return 0
+  fi
+
+  warn "容器启动失败，可能是镜像仓库网络超时或镜像标签不可用。"
+  warn "建议先检查 .env 中镜像配置（MILVUS_IMAGE / ETCD_IMAGE / MINIO_IMAGE）。"
+  warn "尝试使用镜像源重试：${retry_mirror}"
+
+  if DOCKERHUB_MIRROR="${retry_mirror}" "${compose_cmd[@]}"; then
+    return 0
+  fi
+
+  die "重试仍失败。请检查网络与镜像标签，或在 .env 中设置 DOCKERHUB_MIRROR 后重试。"
+}
+
 start_stack() {
+  local fallback_mirror="${DOCKERHUB_FALLBACK_MIRROR:-docker.m.daocloud.io}"
+  local active_mirror="${DOCKERHUB_MIRROR:-docker.io}"
+  local retry_mirror="${DOCKERHUB_MIRROR:-${fallback_mirror}}"
+
   if [[ "${MODE}" == "full" ]]; then
     log "完整模式：启动全部服务（mysql + redis + milvus + nginx + backend）..."
+    log "提示：Milvus 会自动拉起其依赖服务（etcd + minio）"
     if ! docker image inspect ai-agent-demo:latest >/dev/null 2>&1; then
       warn "未找到 ai-agent-demo:latest 镜像。"
       warn "请先执行：cd deploy/backend && ./build-and-deploy.sh"
       die "后端镜像不存在，无法以 --full 模式启动。"
     fi
-    docker compose --env-file .env --profile full up -d
+    log "当前镜像源：${active_mirror}"
+    run_compose_up_with_retry "${retry_mirror}" docker compose --env-file .env --profile full up -d
   else
     log "开发模式：仅启动中间件（mysql + redis + milvus）..."
-    docker compose --env-file .env up -d mysql redis milvus
+    log "提示：Milvus 会自动拉起其依赖服务（etcd + minio）"
+    log "当前镜像源：${active_mirror}"
+    run_compose_up_with_retry "${retry_mirror}" docker compose --env-file .env up -d mysql redis milvus
   fi
 }
 
@@ -220,10 +253,33 @@ wait_for_healthy() {
   return 1
 }
 
+wait_for_started() {
+  local service="$1"
+  local max_wait="${2:-60}"
+  local interval=3
+  local elapsed=0
+
+  log "等待 ${service} 进入运行态（最长 ${max_wait}s）..."
+  while [[ ${elapsed} -lt ${max_wait} ]]; do
+    local running
+    running=$(docker inspect --format='{{.State.Running}}' "ai-agent-${service}" 2>/dev/null || echo "missing")
+    if [[ "${running}" == "true" ]]; then
+      log "${service} 已运行。"
+      return 0
+    fi
+    sleep ${interval}
+    elapsed=$((elapsed + interval))
+  done
+  warn "${service} 在 ${max_wait}s 内未进入运行态。"
+  return 1
+}
+
 wait_for_all_middleware() {
   local failed=0
   wait_for_healthy "mysql"  120 || failed=$((failed + 1))
   wait_for_healthy "redis"  30  || failed=$((failed + 1))
+  wait_for_started "etcd"   60  || failed=$((failed + 1))
+  wait_for_started "minio"  60  || failed=$((failed + 1))
   wait_for_healthy "milvus" 180 || failed=$((failed + 1))
   if [[ ${failed} -gt 0 ]]; then
     warn "${failed} 个服务未通过健康检查，请检查日志：docker compose logs"
@@ -240,10 +296,10 @@ verify_or_init_database() {
   if [[ "${FORCE_INIT_DB}" == "true" ]]; then
     log "强制重新初始化数据库..."
     docker compose exec -T mysql sh -c \
-      "mysql -uroot -p\"${MYSQL_ROOT_PASSWORD}\" \"${MYSQL_DATABASE}\" < /docker-entrypoint-initdb.d/schema.sql" \
+      "mysql --default-character-set=utf8mb4 -uroot -p\"${MYSQL_ROOT_PASSWORD}\" \"${MYSQL_DATABASE}\" < /docker-entrypoint-initdb.d/schema.sql" \
       || warn "schema.sql 执行失败。"
     docker compose exec -T mysql sh -c \
-      "mysql -uroot -p\"${MYSQL_ROOT_PASSWORD}\" \"${MYSQL_DATABASE}\" < /docker-entrypoint-initdb.d/data.sql" \
+      "mysql --default-character-set=utf8mb4 -uroot -p\"${MYSQL_ROOT_PASSWORD}\" \"${MYSQL_DATABASE}\" < /docker-entrypoint-initdb.d/data.sql" \
       || warn "data.sql 执行失败。"
     log "数据库强制初始化完成。"
     return
@@ -266,21 +322,33 @@ verify_or_init_database() {
 
 # ---------- 打印状态和地址 ----------
 print_status() {
+  local access_host="${ACCESS_HOST:-127.0.0.1}"
   echo ""
   log "========== 部署完成 =========="
   echo ""
   docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
   echo ""
   log "中间件访问地址："
-  echo "  MySQL:   127.0.0.1:${MYSQL_PORT:-3306}  (账号: root / ${MYSQL_ROOT_PASSWORD:-root})"
-  echo "  Redis:   127.0.0.1:${REDIS_PORT:-6379}"
-  echo "  Milvus:  127.0.0.1:${MILVUS_PORT:-19530}"
+  local mysql_auth="(账号: root / ${MYSQL_ROOT_PASSWORD:-root})"
+  local redis_auth=""
+  local milvus_auth=""
+  local etcd_auth=""
+  local minio_auth=""
+  if [[ -n "${MILVUS_MINIO_ACCESS_KEY:-}" || -n "${MILVUS_MINIO_SECRET_KEY:-}" ]]; then
+    minio_auth="(账号: ${MILVUS_MINIO_ACCESS_KEY:-minioadmin} / ${MILVUS_MINIO_SECRET_KEY:-minioadmin})"
+  fi
+  echo "  MySQL:   ${access_host}:${MYSQL_PORT:-3306}${mysql_auth:+  ${mysql_auth}}"
+  echo "  Redis:   ${access_host}:${REDIS_PORT:-6379}${redis_auth:+  ${redis_auth}}"
+  echo "  Milvus:  ${access_host}:${MILVUS_PORT:-19530}${milvus_auth:+  ${milvus_auth}}"
+  echo "  Etcd:    ${access_host}:${ETCD_PORT:-2379}${etcd_auth:+  ${etcd_auth}}"
+  echo "  MinIO API:      http://${access_host}:${MINIO_API_PORT:-9000}${minio_auth:+  ${minio_auth}}"
+  echo "  MinIO Console:  http://${access_host}:${MINIO_CONSOLE_PORT:-9001}${minio_auth:+  ${minio_auth}}"
 
   if [[ "${MODE}" == "full" ]]; then
     echo ""
     log "应用访问地址："
-    echo "  后端 API:    http://127.0.0.1:${BACKEND_PORT:-8080}/api/agent/chat"
-    echo "  Nginx 入口:  http://127.0.0.1:${NGINX_PORT:-80}"
+    echo "  后端 API:    http://${access_host}:${BACKEND_PORT:-8080}/api/agent/chat"
+    echo "  Nginx 入口:  http://${access_host}:${NGINX_PORT:-80}"
   fi
 
   echo ""

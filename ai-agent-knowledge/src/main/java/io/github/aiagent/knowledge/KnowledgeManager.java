@@ -124,19 +124,37 @@ public class KnowledgeManager {
         if (!ragProperties.isEnabled() || query == null || query.isBlank()) {
             return "";
         }
+        String backend = ragRetriever.backendName();
+        log.info("向量检索开始: vectorStore={}, query={}, topK={}, minScore={}",
+                backend, truncate(query), ragProperties.getTopK(), ragProperties.getMinScore());
         List<RagDocumentChunk> retrieved = ragRetriever.retrieve(
                 query,
                 ragProperties.getTopK(),
                 ragProperties.getMinScore());
         if (retrieved.isEmpty()) {
+            log.info("向量检索为空，开始重建索引并重试: vectorStore={}", backend);
             ragFullIndexer.rebuildAllIndex();
             retrieved = ragRetriever.retrieve(query, ragProperties.getTopK(), ragProperties.getMinScore());
         }
         if (retrieved.isEmpty()) {
+            log.info("向量检索完成: vectorStore={}, hitCount=0", backend);
             return "";
         }
         List<RagDocumentChunk> reranked = ragReranker.rerank(query, retrieved, ragProperties.getRerankTopK());
         String assembled = ragContextAssembler.assemble(reranked, ragProperties.getMaxContextChars());
+        log.info("向量检索完成: vectorStore={}, hitCount={}, rerankCount={}, contextChars={}",
+                backend, retrieved.size(), reranked.size(), assembled == null ? 0 : assembled.length());
         return assembled.isBlank() ? "" : "L3 RAG 上下文：\n" + assembled;
+    }
+
+    private String truncate(String text) {
+        if (text == null) {
+            return "";
+        }
+        String normalized = text.replaceAll("\\s+", " ").trim();
+        if (normalized.length() <= 300) {
+            return normalized;
+        }
+        return normalized.substring(0, 300) + "...";
     }
 }

@@ -11,3 +11,5 @@
 1. 包含 title、tooltip、legend、series。
 2. 结构清晰，字段命名标准。
 3. 空数据返回“暂无数据”而不是抛异常。
+4. 结果必须是可直接 JSON.parse 的标准 JSON，禁止注释、中文标点、尾随逗号。
+5. 饼图 series.data 必须是 [{name, value}] 结构；折线/柱状图必须包含 xAxis 与 yAxis。

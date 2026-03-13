@@ -25,7 +25,7 @@ spring:
   # 默认连接本机 Docker 中的 MySQL，库名 ai_agent，账号密码 root/root。
   # 如需修改，通过环境变量覆盖即可，不要直接改此文件。
   datasource:
-    url: ${MYSQL_URL:jdbc:mysql://127.0.0.1:3306/ai_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    url: ${MYSQL_URL:jdbc:mysql://192.168.223.131:3306/ai_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
     username: ${MYSQL_USERNAME:root}
     password: ${MYSQL_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -37,7 +37,7 @@ spring:
   # 默认连接本机 Docker 中的 Redis，无密码。
   data:
     redis:
-      host: ${REDIS_HOST:127.0.0.1}
+      host: ${REDIS_HOST:192.168.223.131}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}              # 默认无密码；生产环境务必设置
 
@@ -51,11 +51,11 @@ spring:
     vectorstore:
       milvus:
         client:
-          host: ${MILVUS_HOST:127.0.0.1}
+          host: ${MILVUS_HOST:192.168.223.131}
           port: ${MILVUS_PORT:19530}
         database-name: ${MILVUS_DATABASE:default}
         collection-name: ${MILVUS_COLLECTION:ai_agent_knowledge}
-        embedding-dimension: ${MILVUS_EMBEDDING_DIMENSION:1024}
+        embedding-dimension: ${MILVUS_EMBEDDING_DIMENSION:1536}
         index-type: ${MILVUS_INDEX_TYPE:IVF_FLAT}          # 索引类型：IVF_FLAT / HNSW / FLAT
         metric-type: ${MILVUS_METRIC_TYPE:COSINE}           # 距离度量：COSINE / L2 / IP
         initialize-schema: true                              # 自动创建 Collection，首次启动必须为 true

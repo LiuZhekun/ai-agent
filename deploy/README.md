@@ -49,3 +49,4 @@ docker compose logs -f backend
 - Docker 未安装：`install-all.sh` 会在 Ubuntu/CentOS 自动尝试安装。
 - 端口冲突：修改 `.env` 中端口映射后重新执行安装脚本。
 - 后端无法连接数据库：检查 `.env` 与 `application.yml` 的数据库账号和库名是否一致。
+- 拉取镜像超时：在 `.env` 中设置 `DOCKERHUB_MIRROR=docker.m.daocloud.io` 后重试。

@@ -3,6 +3,9 @@ package io.github.aiagent.knowledge.rag;
 import io.github.aiagent.knowledge.snippet.KnowledgeSnippet;
 import io.github.aiagent.knowledge.snippet.KnowledgeSnippetLoader;
 import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -23,20 +26,25 @@ import java.util.List;
 @Component
 public class RagFullIndexer {
 
+    private static final Logger log = LoggerFactory.getLogger(RagFullIndexer.class);
+
     private final KnowledgeSnippetLoader snippetLoader;
     private final RagDocumentChunker chunker;
     private final RagRetriever retriever;
     private final RagProperties ragProperties;
+    private final ApplicationContext applicationContext;
 
     public RagFullIndexer(
             KnowledgeSnippetLoader snippetLoader,
             RagDocumentChunker chunker,
             RagRetriever retriever,
-            RagProperties ragProperties) {
+            RagProperties ragProperties,
+            ApplicationContext applicationContext) {
         this.snippetLoader = snippetLoader;
         this.chunker = chunker;
         this.retriever = retriever;
         this.ragProperties = ragProperties;
+        this.applicationContext = applicationContext;
     }
 
     /**
@@ -45,7 +53,11 @@ public class RagFullIndexer {
     @PostConstruct
     public void init() {
         if (ragProperties.isEnabled()) {
-            rebuildAllIndex();
+            if (!retriever.isVectorStoreAvailable()) {
+                rebuildAllIndex();
+            } else {
+                log.info("RAG 使用 VectorStore 检索，跳过内存索引初始化: backend={}", retriever.backendName());
+            }
         }
     }
 
@@ -57,6 +69,10 @@ public class RagFullIndexer {
      * @return 构建后的 chunk 总数
      */
     public synchronized int rebuildAllIndex() {
+        if (retriever.isVectorStoreAvailable()) {
+            triggerVectorSync();
+            return 0;
+        }
         List<KnowledgeSnippet> snippets = snippetLoader.load();
         List<RagDocumentChunk> chunks = new ArrayList<>();
         for (KnowledgeSnippet snippet : snippets) {
@@ -64,5 +80,18 @@ public class RagFullIndexer {
         }
         retriever.replaceIndex(chunks);
         return chunks.size();
+    }
+
+    private void triggerVectorSync() {
+        try {
+            Class<?> schedulerClass = Class.forName("io.github.aiagent.vectorizer.VectorSyncScheduler");
+            Object scheduler = applicationContext.getBean(schedulerClass);
+            schedulerClass.getMethod("sync").invoke(scheduler);
+            log.info("已触发向量同步用于 RAG 重建: scheduler=VectorSyncScheduler");
+        } catch (ClassNotFoundException ex) {
+            log.warn("Classpath 中未找到 VectorSyncScheduler，无法触发向量重建");
+        } catch (Exception ex) {
+            log.warn("触发 VectorSyncScheduler 失败: {}", ex.getMessage(), ex);
+        }
     }
 }

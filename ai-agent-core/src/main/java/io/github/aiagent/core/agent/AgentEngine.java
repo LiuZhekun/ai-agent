@@ -9,12 +9,18 @@ import io.github.aiagent.core.model.AgentEvent;
 import io.github.aiagent.core.model.AgentEventType;
 import io.github.aiagent.core.model.ChatMessage;
 import io.github.aiagent.core.prompt.SystemPromptBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.context.ApplicationContext;
+import org.springframework.beans.BeansException;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
+import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +62,8 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class AgentEngine {
 
+    private static final Logger log = LoggerFactory.getLogger(AgentEngine.class);
+
     private final ChatClient.Builder chatClientBuilder;
     private final AgentSessionManager sessionManager;
     private final List<AgentAdvisor> advisors;
@@ -64,6 +72,8 @@ public class AgentEngine {
     private final ThinkingSummaryAdvisor thinkingSummaryAdvisor;
     private final SystemPromptBuilder systemPromptBuilder;
     private final PlanningAdvisor planningAdvisor;
+    private final ApplicationContext applicationContext;
+    private final Environment environment;
 
     public AgentEngine(
             ChatClient.Builder chatClientBuilder,
@@ -72,7 +82,9 @@ public class AgentEngine {
             ToolCallbackProvider toolCallbackProvider,
             MemoryAdvisor memoryAdvisor,
             ThinkingSummaryAdvisor thinkingSummaryAdvisor,
-            SystemPromptBuilder systemPromptBuilder) {
+            SystemPromptBuilder systemPromptBuilder,
+            ApplicationContext applicationContext,
+            Environment environment) {
         this.chatClientBuilder = chatClientBuilder;
         this.sessionManager = sessionManager;
         this.advisors = advisors;
@@ -80,6 +92,8 @@ public class AgentEngine {
         this.memoryAdvisor = memoryAdvisor;
         this.thinkingSummaryAdvisor = thinkingSummaryAdvisor;
         this.systemPromptBuilder = systemPromptBuilder;
+        this.applicationContext = applicationContext;
+        this.environment = environment;
         this.planningAdvisor = advisors.stream()
                 .filter(PlanningAdvisor.class::isInstance)
                 .map(PlanningAdvisor.class::cast)
@@ -134,13 +148,22 @@ public class AgentEngine {
 
                 ChatClient chatClient = chatClientBuilder.build();
                 String message = request.getMessage() == null ? "" : request.getMessage();
+                String model = resolveModel();
+                log.info("LLM 调用开始: sessionId={}, model={}, prompt={}",
+                        sid, model, truncate(message));
 
-                String response = chatClient.prompt()
-                        .system(systemPromptBuilder.build(session))
-                        .user(message)
-                        .toolCallbacks(toolCallbackProvider.getToolCallbacks())
-                        .call()
-                        .content();
+                String response;
+                try {
+                    response = callModel(chatClient, session, message);
+                } catch (Exception ex) {
+                    if (!isMilvusIndexNotFound(ex) || !triggerVectorSync()) {
+                        throw ex;
+                    }
+                    log.warn("检测到 Milvus 索引缺失，已触发向量同步并重试一次对话");
+                    response = callModel(chatClient, session, message);
+                }
+                log.info("LLM 调用完成: sessionId={}, model={}, responseChars={}",
+                        sid, model, response == null ? 0 : response.length());
 
                 memoryAdvisor.after(request);
                 memoryAdvisor.saveAssistant(sid, response);
@@ -161,7 +184,7 @@ public class AgentEngine {
                 sink.next(AgentEvent.of(AgentEventType.COMPLETED, sid, "clarification_needed"));
                 sink.complete();
             } catch (Exception ex) {
-                String msg = ex.getMessage() != null ? ex.getMessage() : "Unknown error";
+                String msg = ex.getMessage() != null ? ex.getMessage() : "未知错误";
                 sink.next(AgentEvent.of(AgentEventType.ERROR, sid,
                         Map.of("message", msg, "recoverable", false)));
                 sink.next(AgentEvent.of(AgentEventType.COMPLETED, sid, "error"));
@@ -193,5 +216,67 @@ public class AgentEngine {
      */
     public ToolCallbackProvider getToolCallbackProvider() {
         return toolCallbackProvider;
+    }
+
+    private String callModel(ChatClient chatClient, AgentSession session, String message) {
+        String systemPrompt = systemPromptBuilder.build(session);
+        log.info("LLM Prompt 入参: sessionId={}, systemPrompt={}, userPrompt={}",
+                session.getSessionId(), truncate(systemPrompt), truncate(message));
+        return chatClient.prompt()
+                .system(systemPrompt)
+                .user(message)
+                .toolCallbacks(toolCallbackProvider.getToolCallbacks())
+                .call()
+                .content();
+    }
+
+    private String resolveModel() {
+        String configured = environment.getProperty("spring.ai.openai.chat.options.model");
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
+        return "未知";
+    }
+
+    private String truncate(String text) {
+        if (text == null) {
+            return "";
+        }
+        String normalized = text.replaceAll("\\s+", " ").trim();
+        if (normalized.length() <= 300) {
+            return normalized;
+        }
+        return normalized.substring(0, 300) + "...";
+    }
+
+    private boolean isMilvusIndexNotFound(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.contains("index not found[collection=")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private boolean triggerVectorSync() {
+        try {
+            Class<?> schedulerClass = Class.forName("io.github.aiagent.vectorizer.VectorSyncScheduler");
+            Object scheduler = applicationContext.getBean(schedulerClass);
+            Method sync = schedulerClass.getMethod("sync");
+            sync.invoke(scheduler);
+            return true;
+        } catch (ClassNotFoundException ex) {
+            log.warn("Classpath 中未找到 VectorSyncScheduler，跳过自愈同步");
+            return false;
+        } catch (BeansException ex) {
+            log.warn("Spring 容器中未找到 VectorSyncScheduler Bean，跳过自愈同步: {}", ex.getMessage());
+            return false;
+        } catch (Exception ex) {
+            log.error("触发自愈向量同步失败", ex);
+            return false;
+        }
     }
 }

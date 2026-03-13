@@ -5,6 +5,8 @@ import io.github.aiagent.core.tool.annotation.AgentTool;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.context.annotation.Primary;
@@ -49,6 +51,8 @@ import java.util.concurrent.Semaphore;
 @Primary
 public class AgentToolCallbackProvider implements ToolCallbackProvider {
 
+    private static final Logger log = LoggerFactory.getLogger(AgentToolCallbackProvider.class);
+
     private final List<ToolMetadata> toolMetadatas = new ArrayList<>();
     private final ToolCallback[] callbacks;
 
@@ -67,6 +71,17 @@ public class AgentToolCallbackProvider implements ToolCallbackProvider {
                 continue;
             }
 
+            ToolCallbackProvider methodProvider;
+            try {
+                methodProvider = MethodToolCallbackProvider.builder()
+                        .toolObjects(bean)
+                        .build();
+            } catch (IllegalStateException ex) {
+                log.warn("Skip @AgentTool bean [{}] because no valid @Tool methods were found: {}",
+                        bean.getClass().getName(), ex.getMessage());
+                continue;
+            }
+
             ToolMetadata metadata = new ToolMetadata();
             metadata.setGroupName(annotation.name());
             metadata.setGroupDescription(annotation.description());
@@ -76,9 +91,6 @@ public class AgentToolCallbackProvider implements ToolCallbackProvider {
             metadata.setToolDescription(annotation.description());
             toolMetadatas.add(metadata);
 
-            ToolCallbackProvider methodProvider = MethodToolCallbackProvider.builder()
-                    .toolObjects(bean)
-                    .build();
             for (ToolCallback cb : methodProvider.getToolCallbacks()) {
                 callbackList.add(new ToolCallbackDecorator(
                         cb, interceptors, metrics, 10, 1, semaphore, formatter));
@@ -86,6 +98,9 @@ public class AgentToolCallbackProvider implements ToolCallbackProvider {
         }
 
         this.callbacks = callbackList.toArray(new ToolCallback[0]);
+        log.info("Agent 工具注册完成: callbackCount={}, toolGroups={}",
+                this.callbacks.length,
+                toolMetadatas.stream().map(ToolMetadata::getGroupName).toList());
     }
 
     /**

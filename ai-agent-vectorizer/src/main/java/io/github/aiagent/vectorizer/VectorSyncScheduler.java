@@ -3,6 +3,8 @@ package io.github.aiagent.vectorizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -91,6 +93,37 @@ public class VectorSyncScheduler {
         Duration elapsed = Duration.between(syncStart, lastSyncTime);
         log.info("Vector sync round completed: entities={}, failed={}, elapsed={}ms",
                 entityCount, failCount, elapsed.toMillis());
+    }
+
+    /**
+     * 应用就绪后执行一次全量同步，确保 Milvus 在首次检索前完成首批数据写入与索引创建。
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void initialSyncOnStartup() {
+        if (!vectorSyncProperties.isEnabled()) {
+            return;
+        }
+        List<VectorSyncEntityProvider> providers = entityProviders.orderedStream().toList();
+        if (providers.isEmpty()) {
+            return;
+        }
+        int entityCount = 0;
+        int failCount = 0;
+        Instant start = Instant.now();
+        for (VectorSyncEntityProvider provider : providers) {
+            for (Class<?> entityClass : provider.entities()) {
+                entityCount++;
+                try {
+                    vectorSyncService.syncAll(entityClass);
+                } catch (Exception ex) {
+                    failCount++;
+                    log.error("Initial vector sync failed for entity {}: {}", entityClass.getName(), ex.getMessage(), ex);
+                }
+            }
+        }
+        long elapsedMs = Duration.between(start, Instant.now()).toMillis();
+        log.info("Initial vector sync completed: entities={}, failed={}, elapsed={}ms",
+                entityCount, failCount, elapsedMs);
     }
 
     /**

@@ -28,8 +28,13 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>io.github.aiagent</groupId>
+            <artifactId>ai-agent-knowledge</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-boot-starter</artifactId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
             <version>${mybatis-plus.version}</version>
         </dependency>
         <dependency>

@@ -1,6 +1,8 @@
 package io.github.aiagent.core.memory;
 
 import io.github.aiagent.core.model.ChatMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
@@ -34,6 +36,8 @@ import java.util.List;
  */
 @Component
 public class AgentMemoryManager {
+
+    private static final Logger log = LoggerFactory.getLogger(AgentMemoryManager.class);
 
     private final ConversationMemory conversationMemory;
     private final TokenBudgetTrimmer tokenBudgetTrimmer;
@@ -102,9 +106,15 @@ public class AgentMemoryManager {
      */
     public List<String> searchKnowledge(String query) {
         if (vectorKnowledgeBase == null) {
+            log.info("向量检索跳过: vectorStore=none, reason=未注入 VectorKnowledgeBase Bean");
             return List.of();
         }
-        return vectorKnowledgeBase.search(query, memoryConfig.getVectorTopK(), memoryConfig.getVectorThreshold());
+        String vectorStore = vectorKnowledgeBase.getClass().getSimpleName();
+        log.info("向量检索开始: vectorStore={}, query={}, topK={}, threshold={}",
+                vectorStore, truncate(query), memoryConfig.getVectorTopK(), memoryConfig.getVectorThreshold());
+        List<String> results = vectorKnowledgeBase.search(query, memoryConfig.getVectorTopK(), memoryConfig.getVectorThreshold());
+        log.info("向量检索完成: vectorStore={}, hitCount={}", vectorStore, results.size());
+        return results;
     }
 
     private List<ChatMessage> messageWindow(List<ChatMessage> history, int window) {
@@ -112,5 +122,16 @@ public class AgentMemoryManager {
             return history;
         }
         return new ArrayList<>(history.subList(history.size() - window, history.size()));
+    }
+
+    private String truncate(String text) {
+        if (text == null) {
+            return "";
+        }
+        String normalized = text.replaceAll("\\s+", " ").trim();
+        if (normalized.length() <= 300) {
+            return normalized;
+        }
+        return normalized.substring(0, 300) + "...";
     }
 }

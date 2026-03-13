@@ -14,7 +14,7 @@ for arg in "$@"; do
     -h|--help)
       echo "用法: ./uninstall-all.sh [--purge-volumes] [--remove-images]"
       echo ""
-      echo "  --purge-volumes  同时删除数据卷（MySQL/Redis/Milvus 数据将丢失）"
+      echo "  --purge-volumes  同时删除数据卷（MySQL/Redis/Milvus/Etcd/MinIO 数据将丢失）"
       echo "  --remove-images  同时删除本地镜像"
       exit 0
       ;;
@@ -33,4 +33,4 @@ if [[ "${REMOVE_IMAGES}" == "true" ]]; then
 fi
 
 docker compose --profile full "${DOWN_ARGS[@]}"
-echo "[INFO] 服务已卸载。volumes=${REMOVE_VOLUMES}, images=${REMOVE_IMAGES}"
+echo "[INFO] 服务已卸载（mysql/redis/milvus/etcd/minio/nginx/backend）。volumes=${REMOVE_VOLUMES}, images=${REMOVE_IMAGES}"

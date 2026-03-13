@@ -38,4 +38,9 @@ public class UserService {
     public void add(User user) { userMapper.insert(user); }
     public void update(User user) { userMapper.updateById(user); }
     public void delete(Long id) { userMapper.deleteById(id); }
+
+    public List<User> getAllUserList() {
+        LambdaQueryWrapper<User> qw = new LambdaQueryWrapper<>();
+        return userMapper.selectList(qw);
+    }
 }

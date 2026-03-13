@@ -2,10 +2,13 @@ package io.github.aiagent.core.tool;
 
 import io.github.aiagent.core.exception.ToolExecutionException;
 import io.github.aiagent.core.metrics.AgentMetrics;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
@@ -40,6 +43,8 @@ import java.util.concurrent.TimeUnit;
  * @see ToolResultFormatter
  */
 public class ToolCallbackDecorator implements ToolCallback {
+
+    private static final Logger log = LoggerFactory.getLogger(ToolCallbackDecorator.class);
 
     private final ToolCallback delegate;
     private final List<ToolCallbackInterceptor> interceptors;
@@ -84,6 +89,8 @@ public class ToolCallbackDecorator implements ToolCallback {
      */
     @Override
     public String call(String toolInput) {
+        String toolName = getToolDefinition().name();
+        log.info("工具调用开始: tool={}, input={}", toolName, truncate(toolInput));
         // 并发闸门：避免单工具被并发洪峰击穿。
         boolean acquired = concurrencyLimiter.tryAcquire();
         if (!acquired) {
@@ -107,7 +114,10 @@ public class ToolCallbackDecorator implements ToolCallback {
                             .get(timeoutSeconds, TimeUnit.SECONDS);
                     break;
                 } catch (Exception ex) {
-                    lastError = ex;
+                    lastError = unwrapExecutionException(ex);
+                    if (isNonRetryable(lastError)) {
+                        break;
+                    }
                 }
             }
             if (output == null) {
@@ -120,7 +130,14 @@ public class ToolCallbackDecorator implements ToolCallback {
             if (metrics != null) {
                 metrics.recordToolCall(getToolDefinition().name(), true, System.currentTimeMillis() - start);
             }
+            log.info("工具调用完成: tool={}, durationMs={}, output={}",
+                    toolName, System.currentTimeMillis() - start, truncate(formatted));
             return formatted;
+        } catch (RuntimeException ex) {
+            Throwable rootError = ex.getCause() != null ? ex.getCause() : ex;
+            log.warn("工具调用失败: tool={}, durationMs={}, input={}, error={}",
+                    toolName, System.currentTimeMillis() - start, truncate(toolInput), describeError(rootError));
+            throw ex;
         } finally {
             concurrencyLimiter.release();
         }
@@ -129,5 +146,38 @@ public class ToolCallbackDecorator implements ToolCallback {
     @Override
     public org.springframework.ai.tool.metadata.ToolMetadata getToolMetadata() {
         return delegate.getToolMetadata();
+    }
+
+    private String truncate(String text) {
+        if (text == null) {
+            return "";
+        }
+        String normalized = text.replaceAll("\\s+", " ").trim();
+        if (normalized.length() <= 300) {
+            return normalized;
+        }
+        return normalized.substring(0, 300) + "...";
+    }
+
+    private Throwable unwrapExecutionException(Throwable throwable) {
+        if (throwable instanceof ExecutionException executionException && executionException.getCause() != null) {
+            return executionException.getCause();
+        }
+        return throwable;
+    }
+
+    private boolean isNonRetryable(Throwable throwable) {
+        return throwable instanceof IllegalArgumentException || throwable instanceof IllegalStateException;
+    }
+
+    private String describeError(Throwable throwable) {
+        if (throwable == null) {
+            return "unknown";
+        }
+        String message = throwable.getMessage();
+        if (message == null || message.isBlank()) {
+            return throwable.getClass().getSimpleName();
+        }
+        return throwable.getClass().getSimpleName() + ": " + message;
     }
 }

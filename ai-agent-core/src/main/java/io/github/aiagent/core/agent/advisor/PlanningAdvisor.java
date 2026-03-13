@@ -9,6 +9,8 @@ import io.github.aiagent.core.planner.TaskPlan;
 import io.github.aiagent.core.planner.TaskPlanner;
 import io.github.aiagent.core.tool.AgentToolCallbackProvider;
 import io.github.aiagent.core.tool.ToolMetadata;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
@@ -32,6 +34,8 @@ import java.util.List;
 @Component
 @Order(30)
 public class PlanningAdvisor implements AgentAdvisor {
+
+    private static final Logger log = LoggerFactory.getLogger(PlanningAdvisor.class);
 
     private final TaskPlanner taskPlanner;
     private final PlanExecutor planExecutor;
@@ -71,10 +75,18 @@ public class PlanningAdvisor implements AgentAdvisor {
         }
         boolean needsPlan = request.getMessage().length() > 12 || request.getMessage().contains("然后");
         if (!needsPlan) {
+            log.debug("跳过任务规划: sessionId={}, reason=消息较短且不含串行关键词, message={}",
+                    session.getSessionId(), truncate(request.getMessage()));
             return null;
         }
+        log.info("触发任务规划: sessionId={}, message={}, toolCount={}",
+                session.getSessionId(), truncate(request.getMessage()), tools == null ? 0 : tools.size());
         TaskPlan plan = taskPlanner.plan(request.getMessage(), tools);
         session.setCurrentPlan(plan);
+        log.info("任务规划写入会话: sessionId={}, planId={}, stepCount={}",
+                session.getSessionId(),
+                plan == null ? "" : plan.getPlanId(),
+                plan == null || plan.getSteps() == null ? 0 : plan.getSteps().size());
         return plan;
     }
 
@@ -88,6 +100,19 @@ public class PlanningAdvisor implements AgentAdvisor {
         if (session.getCurrentPlan() == null) {
             return Flux.empty();
         }
+        log.info("开始执行会话中的任务计划: sessionId={}, planId={}",
+                session.getSessionId(), session.getCurrentPlan().getPlanId());
         return planExecutor.execute(session.getCurrentPlan(), session);
+    }
+
+    private String truncate(String text) {
+        if (text == null) {
+            return "";
+        }
+        String normalized = text.replaceAll("\\s+", " ").trim();
+        if (normalized.length() <= 200) {
+            return normalized;
+        }
+        return normalized.substring(0, 200) + "...";
     }
 }

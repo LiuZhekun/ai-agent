@@ -97,6 +97,65 @@ LLM 在当前项目中承担三类职责：
 > 注意：当前代码里“放在知识查询后面”主要指 L0/L1/L3。  
 > L2 属于运行时工具能力，发生在 LLM 调用过程中，由模型按需触发。
 
+## 问题 4：启动时出现 `OpenAiApi.embeddings` 的 `HTTP 404` 怎么办？
+
+这是“Embedding 接口不可用或地址不匹配”的典型报错，常见于 OpenAI 兼容网关接入阶段。
+
+### 常见原因
+
+1. 运行在不支持 embedding 的 provider/profile（例如仅聊天能力）。
+2. `base-url` 末尾多写了 `/v1`，客户端再次拼接后路径错误。
+3. 环境变量覆盖了 yml（看起来改了配置，实际生效值没变）。
+4. embedding 模型名不被当前服务商支持。
+
+### 排查顺序（PowerShell）
+
+```powershell
+echo $env:SPRING_PROFILES_ACTIVE
+echo $env:DASHSCOPE_BASE_URL
+echo $env:DASHSCOPE_EMBEDDING_MODEL
+```
+
+确认启动日志中的 `Effective AI config => ...` 是否与预期一致（`baseUrl`、`embeddingModel`）。
+
+### 修复建议
+
+- DashScope 建议使用不带 `/v1` 的兼容根地址，并显式配置 embedding 模型。
+- 若仅需聊天，不需向量能力，可关闭：
+  - `ai.agent.knowledge.rag.enabled=false`
+  - `ai.agent.vector.sync.enabled=false`
+
+## 问题 5：为什么会报 `index not found[collection=...]`？
+
+这是 Milvus 集合存在但没有可用索引时的报错，通常发生在“先检索、后建索引”的冷启动阶段。
+
+### 处理方式
+
+1. 确认 `initialize-schema: true`。
+2. 启动后先执行一次向量同步（或等待启动后自动全量同步完成）。
+3. 通过接口确认同步已执行：
+   - `GET /api/agent/vector/status`
+   - `POST /api/agent/vector/sync`
+4. 若集合是历史脏数据，可删除旧集合后重建。
+
+## 问题 6：为什么会报 `Incorrect dimension ... 1536 != 1024`？
+
+根因是“当前 embedding 维度”和“已有 Milvus 集合字段维度”不一致。Milvus 集合字段维度创建后不可变。
+
+### 处理方式
+
+二选一：
+
+1. **沿用旧集合维度**：把 embedding 模型和 `embedding-dimension` 改回旧值。
+2. **升级到新维度（推荐）**：切换到新集合名（如 `ai_agent_knowledge_1536`），并设置对应维度。
+
+### 推荐配置策略
+
+- 将集合名和维度绑定管理，避免混用：
+  - `ai_agent_knowledge_1024` ↔ `embedding-dimension=1024`
+  - `ai_agent_knowledge_1536` ↔ `embedding-dimension=1536`
+- 每次改 embedding 模型时，同步评估是否需要新建集合。
+
 ## 常见误区
 
 - 误区 1：`L2` 也会和 L0/L1/L3 一样在 `KnowledgeManager` 中预先注入。  

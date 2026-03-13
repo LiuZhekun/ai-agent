@@ -1,10 +1,13 @@
 package io.github.aiagent.knowledge.rag;
 
+import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -27,7 +30,24 @@ import java.util.stream.Collectors;
 @Component
 public class RagRetriever {
 
+    private final ApplicationContext applicationContext;
     private final AtomicReference<List<RagDocumentChunk>> indexRef = new AtomicReference<>(List.of());
+
+    public RagRetriever(ApplicationContext applicationContext) {
+        this.applicationContext = applicationContext;
+    }
+
+    public String backendName() {
+        Object vectorStore = getVectorStoreBean();
+        if (vectorStore != null) {
+            return vectorStore.getClass().getSimpleName();
+        }
+        return "rag-in-memory-index";
+    }
+
+    public boolean isVectorStoreAvailable() {
+        return getVectorStoreBean() != null;
+    }
 
     /**
      * 原子替换内存中的文档索引。
@@ -50,6 +70,11 @@ public class RagRetriever {
         if (query == null || query.isBlank()) {
             return List.of();
         }
+        Object vectorStore = getVectorStoreBean();
+        if (vectorStore != null) {
+            return retrieveFromVectorStore(vectorStore, query, topK, minScore);
+        }
+
         List<RagDocumentChunk> source = indexRef.get();
         if (source.isEmpty()) {
             return List.of();
@@ -76,6 +101,167 @@ public class RagRetriever {
                 .sorted(Comparator.comparingDouble(RagDocumentChunk::getScore).reversed())
                 .limit(Math.max(topK, 1))
                 .toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<RagDocumentChunk> retrieveFromVectorStore(Object vectorStore, String query, int topK, double minScore) {
+        List<?> docs = invokeSimilaritySearch(vectorStore, query, topK, minScore);
+        if (docs == null || docs.isEmpty()) {
+            return List.of();
+        }
+        List<RagDocumentChunk> chunks = new ArrayList<>(docs.size());
+        for (Object doc : docs) {
+            String content = firstNonBlank(invokeString(doc, "getText"), invokeString(doc, "getFormattedContent"));
+            if (content == null || content.isBlank()) {
+                continue;
+            }
+            Map<String, Object> metadata = invokeMetadata(doc);
+            RagDocumentChunk chunk = new RagDocumentChunk();
+            chunk.setChunkId(firstNonBlank(invokeString(doc, "getId"), metadataValue(metadata, "rowId"), metadataValue(metadata, "id")));
+            chunk.setTitle(firstNonBlank(metadataValue(metadata, "title"), metadataValue(metadata, "table"), "vector-doc"));
+            chunk.setSource(firstNonBlank(metadataValue(metadata, "source"), metadataValue(metadata, "collection"), metadataValue(metadata, "entityClass")));
+            chunk.setContent(content);
+            chunk.setScore(extractScore(doc, metadata));
+            chunks.add(chunk);
+        }
+        return chunks;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<?> invokeSimilaritySearch(Object vectorStore, String query, int topK, double minScore) {
+        try {
+            Class<?> requestClass = Class.forName("org.springframework.ai.vectorstore.SearchRequest");
+            Method builderMethod = requestClass.getMethod("builder");
+            Object builder = builderMethod.invoke(null);
+            invokeBuilderIfExists(builder, "query", query);
+            invokeBuilderIfExists(builder, "topK", Math.max(topK, 1));
+            invokeBuilderIfExists(builder, "similarityThreshold", Math.max(minScore, 0D));
+            Object request = builder.getClass().getMethod("build").invoke(builder);
+            Method search = vectorStore.getClass().getMethod("similaritySearch", requestClass);
+            Object result = search.invoke(vectorStore, request);
+            if (result instanceof List<?> list) {
+                return list;
+            }
+        } catch (Exception ignored) {
+            // 兼容不含 SearchRequest 类型的 Spring AI 版本，降级为字符串查询
+        }
+
+        try {
+            Method search = vectorStore.getClass().getMethod("similaritySearch", String.class);
+            Object result = search.invoke(vectorStore, query);
+            if (result instanceof List<?> list) {
+                return list;
+            }
+        } catch (Exception ignored) {
+        }
+        return List.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object getVectorStoreBean() {
+        try {
+            Class<?> vectorStoreClass = Class.forName("org.springframework.ai.vectorstore.VectorStore");
+            return applicationContext.getBeanProvider((Class<Object>) vectorStoreClass).getIfAvailable();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void invokeBuilderIfExists(Object target, String method, Object arg) {
+        try {
+            for (Method m : target.getClass().getMethods()) {
+                if (!m.getName().equals(method) || m.getParameterCount() != 1) {
+                    continue;
+                }
+                Class<?> paramType = m.getParameterTypes()[0];
+                if (arg == null || wrapPrimitive(paramType).isAssignableFrom(arg.getClass())) {
+                    m.invoke(target, arg);
+                    return;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private Class<?> wrapPrimitive(Class<?> type) {
+        if (!type.isPrimitive()) {
+            return type;
+        }
+        if (type == int.class) {
+            return Integer.class;
+        }
+        if (type == double.class) {
+            return Double.class;
+        }
+        if (type == long.class) {
+            return Long.class;
+        }
+        if (type == boolean.class) {
+            return Boolean.class;
+        }
+        if (type == float.class) {
+            return Float.class;
+        }
+        if (type == short.class) {
+            return Short.class;
+        }
+        if (type == byte.class) {
+            return Byte.class;
+        }
+        if (type == char.class) {
+            return Character.class;
+        }
+        return type;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> invokeMetadata(Object doc) {
+        try {
+            Object metadata = doc.getClass().getMethod("getMetadata").invoke(doc);
+            if (metadata instanceof Map<?, ?> map) {
+                return (Map<String, Object>) map;
+            }
+        } catch (Exception ignored) {
+        }
+        return Map.of();
+    }
+
+    private double extractScore(Object doc, Map<String, Object> metadata) {
+        try {
+            Object score = doc.getClass().getMethod("getScore").invoke(doc);
+            if (score instanceof Number number) {
+                return number.doubleValue();
+            }
+        } catch (Exception ignored) {
+        }
+        Object metadataScore = metadata.get("score");
+        if (metadataScore instanceof Number number) {
+            return number.doubleValue();
+        }
+        return 0D;
+    }
+
+    private String invokeString(Object target, String method) {
+        try {
+            Object value = target.getClass().getMethod(method).invoke(target);
+            return value == null ? null : String.valueOf(value);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String metadataValue(Map<String, Object> metadata, String key) {
+        Object value = metadata.get(key);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private double score(Set<String> queryTerms, String content) {

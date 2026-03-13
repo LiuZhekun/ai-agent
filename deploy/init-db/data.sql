@@ -1,3 +1,5 @@
+SET NAMES utf8mb4;
+
 INSERT INTO sys_department(name,parent_id,leader,status,sort) VALUES
 ('技术部',0,'李雷',1,1),
 ('产品部',0,'韩梅梅',1,2),

@@ -23,3 +23,14 @@ spring:
       chat:
         options:
           model: ${DEEPSEEK_MODEL:deepseek-chat}  # 可选模型：deepseek-chat / deepseek-reasoner
+
+# DeepSeek 兼容端点默认不提供稳定的 embeddings 能力，
+# 关闭依赖 embedding 的模块，避免启动时向量初始化报 404。
+ai:
+  agent:
+    knowledge:
+      rag:
+        enabled: ${AI_AGENT_RAG_ENABLED:false}
+    vector:
+      sync:
+        enabled: ${AI_AGENT_VECTOR_SYNC_ENABLED:false}

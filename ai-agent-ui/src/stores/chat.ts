@@ -2,20 +2,50 @@ import { defineStore } from "pinia";
 import { sendMessage } from "../api/agent";
 import type { AgentEvent, ChatMessage, ToolCallInfo, SlotState } from "../types/agent";
 
+type ClarificationQuestion = {
+  slotName: string;
+  question: string;
+  options?: string[];
+  required: boolean;
+};
+
 export const useChatStore = defineStore("chat", {
   state: () => ({
-    messages: [] as ChatMessage[],
+    sessionMessages: {} as Record<string, ChatMessage[]>,
+    currentSessionId: "",
     isLoading: false,
     thinkingSummary: "" as string,
     toolTraces: [] as ToolCallInfo[],
     clarificationState: null as null | "waiting" | "confirming",
-    clarificationQuestions: [] as { slotName: string; question: string; options?: string[]; required: boolean }[],
+    clarificationQuestions: [] as ClarificationQuestion[],
     slotStates: [] as SlotState[],
     confirmAction: null as null | { approvalId: string; actionSummary: string; riskLevel: string },
   }),
+  getters: {
+    messages(state): ChatMessage[] {
+      if (!state.currentSessionId) return [];
+      return state.sessionMessages[state.currentSessionId] ?? [];
+    },
+  },
   actions: {
+    setActiveSession(sessionId: string) {
+      this.currentSessionId = sessionId;
+      this.resetRuntimeState();
+      if (!sessionId) return;
+      this.ensureSessionMessages(sessionId);
+    },
+
+    removeSession(sessionId: string) {
+      delete this.sessionMessages[sessionId];
+      if (this.currentSessionId === sessionId) {
+        this.setActiveSession("");
+      }
+    },
+
     async sendUserMessage(sessionId: string, message: string) {
-      this.messages.push({ role: "USER", content: message });
+      this.setActiveSession(sessionId);
+      const messages = this.ensureSessionMessages(sessionId);
+      messages.push({ role: "USER", content: message });
       this.isLoading = true;
       this.thinkingSummary = "";
       this.toolTraces = [];
@@ -28,6 +58,7 @@ export const useChatStore = defineStore("chat", {
     },
 
     async submitSlotAnswers(sessionId: string, answers: Record<string, unknown>) {
+      this.setActiveSession(sessionId);
       this.clarificationState = null;
       this.isLoading = true;
       await sendMessage(sessionId, "", {
@@ -39,6 +70,7 @@ export const useChatStore = defineStore("chat", {
     },
 
     async submitApproval(sessionId: string, approvalId: string, approved: boolean) {
+      this.setActiveSession(sessionId);
       this.clarificationState = null;
       this.isLoading = true;
       await sendMessage(sessionId, "", {
@@ -50,6 +82,7 @@ export const useChatStore = defineStore("chat", {
     },
 
     dispatchEvent(event: AgentEvent) {
+      const messages = this.currentSessionId ? this.ensureSessionMessages(this.currentSessionId) : [];
       switch (event.type) {
         case "HEARTBEAT":
           break;
@@ -78,13 +111,13 @@ export const useChatStore = defineStore("chat", {
           }
           break;
         case "CHART_PAYLOAD":
-          this.messages.push({ role: "ASSISTANT", content: "__CHART__" + JSON.stringify(event.payload) });
+          messages.push({ role: "ASSISTANT", content: "__CHART__" + JSON.stringify(event.payload) });
           break;
         case "FINAL_ANSWER":
-          this.messages.push({ role: "ASSISTANT", content: String(event.payload ?? "") });
+          messages.push({ role: "ASSISTANT", content: String(event.payload ?? "") });
           break;
         case "ERROR":
-          this.messages.push({
+          messages.push({
             role: "SYSTEM",
             content: typeof event.payload === "object" && event.payload !== null
               ? (event.payload as Record<string, unknown>).message as string ?? "未知错误"
@@ -94,6 +127,23 @@ export const useChatStore = defineStore("chat", {
         case "COMPLETED":
           break;
       }
+    },
+
+    ensureSessionMessages(sessionId: string) {
+      if (!this.sessionMessages[sessionId]) {
+        this.sessionMessages[sessionId] = [];
+      }
+      return this.sessionMessages[sessionId];
+    },
+
+    resetRuntimeState() {
+      this.isLoading = false;
+      this.thinkingSummary = "";
+      this.toolTraces = [];
+      this.clarificationState = null;
+      this.clarificationQuestions = [];
+      this.slotStates = [];
+      this.confirmAction = null;
     },
   },
 });
